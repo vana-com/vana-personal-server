@@ -47,7 +47,7 @@ def test_personal_server():
         
         try:
             output = replicate.run(
-                "vana-com/personal-server:19274a078cad175d8c8712a4b6f46e9baa0b56686b28b6d8fc965f813327cc4e",
+                "vana-com/personal-server:1ef2dbffd550699b73b1a4d43ec9407e129333bdb59cdb701caefa6c03a42155",
                 input={
                     "replicate_api_token": api_token,
                     "signature": signature_hex,
