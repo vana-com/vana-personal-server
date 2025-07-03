@@ -22,4 +22,4 @@ class FileMetadata:
     file_id: int
     owner_address: str
     public_url: str
-    encryption_key: str
+    encrypted_key: str

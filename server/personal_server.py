@@ -58,7 +58,7 @@ class PersonalServer:
         files_content = []
         for file_metadata in files_metadata:
             encrypted_file_content = download_file(file_metadata.public_url)
-            print(f"Fetched file content from {file_metadata.public_url}")
+            print(f"Fetched file content from {file_metadata.public_url}. Encrypted content: \n{encrypted_file_content}")
             decrypted_file_content = decrypt(file_metadata.encryption_key, encrypted_file_content)
             print(f"Decrypted file content: {decrypted_file_content}")
             files_content.append(decrypted_file_content)

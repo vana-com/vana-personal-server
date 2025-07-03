@@ -1,4 +1,4 @@
-from entities import AccessPermissionsResponse, PersonalServerRequest
+from ..entities import AccessPermissionsResponse, PersonalServerRequest
 
 
 class AccessPermissions:
