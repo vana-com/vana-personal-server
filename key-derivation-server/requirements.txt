@@ -1,0 +1,3 @@
+cog
+python-dotenv
+bip-utils>=2.9.0 

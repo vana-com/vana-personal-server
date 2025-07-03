@@ -1,0 +1,6 @@
+image: r8.im/cog-base:python3.12-slim
+build:
+  gpu: false
+  python_version: "3.12"
+  python_requirements: "requirements.txt"
+predict: "key_derivation_predict.py:Predictor" 
