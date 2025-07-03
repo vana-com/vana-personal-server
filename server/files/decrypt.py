@@ -1,7 +1,6 @@
-import base64
+import pgpy
 
 
-class Decrypt:
-    def execute(self, file_content: str, encryption_key: str):
-        # TODO Decrypt the file content
-        return file_content
+def decrypt(encryption_key: str, content: str) -> str:
+    message = pgpy.PGPMessage.from_blob(content)
+    return message.decrypt(encryption_key)

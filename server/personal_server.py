@@ -6,12 +6,11 @@ import json
 import web3
 from eth_account.messages import encode_defunct
 
-from .entities import AccessPermissionsResponse, PersonalServerRequest
-from .onchain.data_registry import DataRegistry
-from .onchain.access_permissions import AccessPermissions
-from .llm import Llm
-from .files.download import Download
-from .files.decrypt import Decrypt
+from entities import AccessPermissionsResponse, PersonalServerRequest
+from onchain.data_registry import DataRegistry
+from onchain.access_permissions import AccessPermissions
+from llm import Llm
+from files import download_file, decrypt
 
 LLM_INFERENCE_OPERATION = "llm_inference"
 PROMPT_DATA_SEPARATOR = ("-----"*80 + "\n")
@@ -20,8 +19,6 @@ class PersonalServer:
     def __init__(self, llm: Llm, web3=None):
         self.llm = llm
         self.data_registry = DataRegistry()
-        self.download = Download()
-        self.decrypt = Decrypt()
         self.web3 = web3
         self.access_permissions = AccessPermissions()
 
@@ -36,6 +33,7 @@ class PersonalServer:
 
         app_address = self.recover_app_address(request_json, signature)
         access_permissions = self.fetch_access_permissions(app_address, request)
+        print(f"Access permissions: {access_permissions}")
 
         if request.operation != access_permissions.operation:
             raise ValueError("App does not have access to the operation")
@@ -51,6 +49,7 @@ class PersonalServer:
         files_metadata = []
         for file_id in request.file_ids:
             file_metadata = self.data_registry.fetch_file_metadata(file_id)
+            print(f"File metadata for file {file_id}: {file_metadata}")
             if not file_metadata:
                 raise ValueError(f"File {file_id} not found in the data registry")
 
@@ -58,8 +57,10 @@ class PersonalServer:
 
         files_content = []
         for file_metadata in files_metadata:
-            encrypted_file_content = self.download.execute(file_metadata.public_url)
-            decrypted_file_content = self.decrypt.execute(encrypted_file_content, file_metadata.encryption_key)
+            encrypted_file_content = download_file(file_metadata.public_url)
+            print(f"Fetched file content from {file_metadata.public_url}")
+            decrypted_file_content = decrypt(file_metadata.encryption_key, encrypted_file_content)
+            print(f"Decrypted file content: {decrypted_file_content}")
             files_content.append(decrypted_file_content)
 
         # Get the prompt template from request parameters
