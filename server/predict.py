@@ -1,7 +1,11 @@
 import replicate
 from dotenv import load_dotenv
-from .personal_server import PersonalServer
-from .llm import Llm
+from personal_server import PersonalServer
+from llm import Llm
+import traceback
+import sys
+import os
+from cog import Secret
 
 load_dotenv()
 
@@ -11,9 +15,22 @@ class Predictor:
         self.model_name = "deepseek-ai/deepseek-v3"
 
     def predict(
-        self, replicate_auth_token: str, signature: str, request_json: str
+        self, 
+        replicate_api_token: Secret, # Apparently must be added in order to forward the request to replicate.Client (for LLM)
+        signature: str, 
+        request_json: str, 
     ) -> str:
-        llm = Llm(client=replicate.Client(api_token=replicate_auth_token))
-        personal_server = PersonalServer(llm)
-        output = personal_server.execute(request_json, signature)
-        return output
+        try:
+            llm = Llm(client=replicate.Client(api_token=replicate_api_token.get_secret_value()))
+            personal_server = PersonalServer(llm)
+            
+            output = personal_server.execute(request_json, signature)
+            
+            if output is None:
+                return "Error: No output generated"
+            
+            return output
+        except Exception as e:
+            error_msg = f"Error in predict: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg, file=sys.stderr)
+            return f"Error: {str(e)}"
