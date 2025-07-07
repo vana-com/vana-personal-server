@@ -119,23 +119,13 @@ class AccessPermissions:
             # Debug: Print the raw permission data
             print(f"Raw permission data: {permission_data}")
             
-            # Handle the struct return type properly
-            if hasattr(permission_data, 'user'):
-                # If it's a named tuple/struct
-                result = {
-                    'user': permission_data.user,
-                    'nonce': permission_data.nonce,
-                    'grant': permission_data.grant,
-                    'signature': permission_data.signature
-                }
-            else:
-                # Fallback to tuple indexing
-                result = {
-                    'user': permission_data[0],
-                    'nonce': permission_data[1],
-                    'grant': permission_data[2],
-                    'signature': permission_data[3]
-                }
+            # Use attribute access for the latest web3 SDK
+            result = {
+                'user': permission_data.user,
+                'nonce': permission_data.nonce,
+                'grant': permission_data.grant,
+                'signature': permission_data.signature
+            }
             
             # Debug: Print the parsed permission data
             print(f"Parsed permission data: {result}")
