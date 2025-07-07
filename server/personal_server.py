@@ -28,30 +28,26 @@ class PersonalServer:
     def execute(self, request_json: str, signature: str):
         request = PersonalServerRequest(**json.loads(request_json))
 
-        if request.operation != LLM_INFERENCE_OPERATION:
-            raise ValueError("Only LLM inference is supported")
-        
-        if request.file_ids is None or len(request.file_ids) == 0:
-            raise ValueError("File IDs are required")
+        if request.permission_id <= 0:
+            raise ValueError("Valid permission ID is required")
 
         app_address = self.recover_app_address(request_json, signature)
         print(f"App address: {app_address}")
+        
+        # Fetch access permissions from blockchain using permission_id
         access_permissions = self.fetch_access_permissions(app_address, request)
         print(f"Access permissions: {access_permissions}")
 
-        if request.operation != access_permissions.operation:
-            raise ValueError("App does not have access to the operation")
+        if access_permissions.operation != LLM_INFERENCE_OPERATION:
+            raise ValueError("Only LLM inference is supported")
 
-        if request.parameters != access_permissions.parameters:
-            raise ValueError("App does not have access to the parameters")
-
-        if set(request.file_ids) != set(access_permissions.file_ids):
-            raise ValueError("App does not have access to the files")
+        if not access_permissions.file_ids or len(access_permissions.file_ids) == 0:
+            raise ValueError("No file IDs found in permission")
 
         logger.info(f"App {app_address} has access to execute the request: {request}")
 
         files_metadata = []
-        for file_id in request.file_ids:
+        for file_id in access_permissions.file_ids:
             file_metadata = self.data_registry.fetch_file_metadata(file_id)
             print(f"File metadata for file {file_id}: {file_metadata}")
             if not file_metadata:
@@ -74,10 +70,10 @@ class PersonalServer:
             print(f"Decrypted file content: {decrypted_file_content}")
             files_content.append(decrypted_file_content)
 
-        # Get the prompt template from request parameters
-        prompt_template = request.parameters.get("prompt", "")
+        # Get the prompt template from access permissions parameters
+        prompt_template = access_permissions.parameters.get("prompt", "")
         if not prompt_template:
-            raise ValueError("Prompt template is required in parameters")
+            raise ValueError("Prompt template is required in permission parameters")
         
         prompt = self.build_prompt(prompt_template, files_content)
         return self.llm.run(prompt)

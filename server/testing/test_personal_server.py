@@ -36,13 +36,13 @@ def test_ecies_decryption():
         return False
 
 def test_personal_server():
-    """Test the full personal server flow"""
+    """Test the full personal server flow with new permission_id structure"""
     print("\nTesting full personal server flow...")
     
     web3 = Web3()
 
-    # Test data
-    request = '{"user_address": "0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4", "file_ids": [999], "operation": "llm_inference", "parameters": {"prompt": "Analyze personality: {{data}}"}}'
+    # Test data with new structure - using permission_id
+    request = '{"user_address": "0xd7Ae9319049f0B6cA9AD044b165c5B4F143EF451", "permission_id": 6}'
     message_hash = encode_defunct(text=request)
 
     # Use a test private key for signing
@@ -56,7 +56,7 @@ def test_personal_server():
         dummy_llm = Llm(client=None)
         dummy_llm.run = lambda prompt: "Processed prompt: " + prompt
         
-        personal_server = PersonalServer(llm=dummy_llm, web3=web3)
+        personal_server = PersonalServer(llm=dummy_llm)
         
         output = personal_server.execute(request, signature.signature)
         print(f"✅ Personal server executed successfully")
@@ -65,6 +65,7 @@ def test_personal_server():
         
     except Exception as e:
         print(f"❌ Personal server test failed: {e}")
+        print(f"Error details: {type(e).__name__}: {str(e)}")
         return False
 
 if __name__ == "__main__":
