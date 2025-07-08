@@ -6,7 +6,7 @@ Local test script for key derivation server
 import os
 import json
 from dotenv import load_dotenv
-from key_derivation_server import IdentityServer
+from identity_server import IdentityServer
 from bip_utils import Bip39MnemonicGenerator, Bip39Languages
 
 # Load environment variables
