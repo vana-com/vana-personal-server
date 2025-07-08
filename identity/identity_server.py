@@ -5,6 +5,8 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
+TEST_MNEMONIC = "shoe pass menu sniff phrase despair corn phone then rotate sheriff drop"
+
 class IdentityServer:
     """
     Server for deterministically deriving keys for user servers based on user identity.
@@ -12,11 +14,8 @@ class IdentityServer:
     """
     
     def __init__(self):
-        self.mnemonic = os.getenv("VANA_MNEMONIC")
+        self.mnemonic = os.getenv("VANA_MNEMONIC", TEST_MNEMONIC)
         self.language = os.getenv("MNEMONIC_LANGUAGE", "english")
-        
-        if not self.mnemonic:
-            raise ValueError("VANA_MNEMONIC environment variable must be set")
     
     def _user_identity_to_index(self, user_address: str) -> int:
         """
