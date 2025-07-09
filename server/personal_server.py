@@ -13,6 +13,7 @@ from onchain.data_registry import DataRegistry
 from onchain.access_permissions import AccessPermissions
 from llm import Llm
 from files import download_file, decrypt
+from identity_server import IdentityServer
 
 LLM_INFERENCE_OPERATION = "llm_inference"
 PROMPT_DATA_SEPARATOR = ("-----"*80 + "\n")
@@ -23,7 +24,7 @@ class PersonalServer:
         self.data_registry = DataRegistry()
         self.web3 = web3.Web3()
         self.access_permissions = AccessPermissions()
-        self.personal_server_private_key = os.getenv("PERSONAL_SERVER_PRIVATE_KEY", "987840ffce35689b179f1ac6cfaa8c04fdbf246dd91ea99e8bfb1a824a67d108")
+        self.identity_server = IdentityServer()
 
     def execute(self, request_json: str, signature: str):
         request = PersonalServerRequest(**json.loads(request_json))
@@ -46,6 +47,10 @@ class PersonalServer:
 
         logger.info(f"App {app_address} has access to execute the request: {request}")
 
+        # Derive the personal server private key based on user address
+        user_server_keys = self.identity_server.derive_user_server_address(request.user_address)
+        personal_server_private_key = user_server_keys["private_key"]
+
         files_metadata = []
         for file_id in access_permissions.file_ids:
             file_metadata = self.data_registry.fetch_file_metadata(file_id, request.user_address)
@@ -61,7 +66,7 @@ class PersonalServer:
             print(f"Fetched file content from {file_metadata.public_url}")
             # Decrypt file_metadata.encrypted_key with personal_server_private_key using ECIES
             encrypted_key_bytes = bytes.fromhex(file_metadata.encrypted_key)
-            decrypted_key = ecies_decrypt(self.personal_server_private_key, encrypted_key_bytes)
+            decrypted_key = ecies_decrypt(personal_server_private_key, encrypted_key_bytes)
             print(f"Decrypted key: {decrypted_key}")
 
             # Decrypt actual file content with the decrypted key
