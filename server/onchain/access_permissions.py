@@ -16,6 +16,7 @@ class AccessPermissions:
         blockchain_url = os.getenv("BLOCKCHAIN_HTTP_URL", "https://rpc.moksha.vana.org")
         self.web3 = Web3(Web3.HTTPProvider(blockchain_url))
         
+        # TODO Extract addresses and ABIs
         # PermissionRegistry contract address and ABI
         self.permission_registry_address = os.getenv(
             "PERMISSION_REGISTRY_ADDRESS", 

@@ -5,6 +5,7 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# TODO Switch mechanism to pass the mnemonic as well as the mnemonic itself (to use prod one)
 TEST_MNEMONIC = "shoe pass menu sniff phrase despair corn phone then rotate sheriff drop"
 
 class IdentityServer:

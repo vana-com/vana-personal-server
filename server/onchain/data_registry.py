@@ -13,6 +13,7 @@ class DataRegistry:
         self.web3 = Web3(Web3.HTTPProvider(blockchain_url))
         
         # DataRegistry contract address and ABI
+        # TODO Extract addresses and ABIs
         self.data_registry_address = os.getenv(
             "DATA_REGISTRY_ADDRESS", 
             "0x8C8788f98385F6ba1adD4234e551ABba0f82Cb7C"  # DataRegistry Proxy address
