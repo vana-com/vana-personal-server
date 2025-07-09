@@ -18,7 +18,7 @@ class DataRegistry:
             "0x8C8788f98385F6ba1adD4234e551ABba0f82Cb7C"  # DataRegistry Proxy address
         )
         
-        # ABI for the files function from DataRegistryImplementation.ts
+        # ABI for the files and filePermissions functions from DataRegistryImplementation.ts
         self.data_registry_abi = [
             {
                 "inputs": [
@@ -60,7 +60,31 @@ class DataRegistry:
                 ],
                 "stateMutability": "view",
                 "type": "function"
-            }
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "fileId",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "account",
+                        "type": "address"
+                    }
+                ],
+                "name": "filePermissions",
+                "outputs": [
+                    {
+                        "internalType": "string",
+                        "name": "",
+                        "type": "string"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
         ]
         
         self.contract = self.web3.eth.contract(
@@ -68,7 +92,7 @@ class DataRegistry:
             abi=self.data_registry_abi
         )
 
-    def fetch_file_metadata(self, file_id: int) -> Optional[FileMetadata]:
+    def fetch_file_metadata(self, file_id: int, user_address: str) -> Optional[FileMetadata]:
         """Fetch file metadata from the DataRegistry contract"""
         try:
             if not self.web3.is_connected():
@@ -105,7 +129,16 @@ class DataRegistry:
             return None
 
     def _get_encrypted_key_for_file(self, file_id: int, owner_address: str) -> str:
-        """Get the encrypted key for a file. This is a placeholder implementation."""
-        # TODO: This should be implemented to fetch the actual encrypted key
-        # For now, return a placeholder for testing
-        return "0444507cbd80da6a686ce222d31389ffc9aef17eb7c9b041271b880d6ae44f7c1138de5b19940ac86e618b559436ad1ccf92738c5d0c3a5b8fdf039e50537707bafc4f5690082cc058b88c264d4026dfbbb1c050306658dcc58f5985b646dfc206a98573d40227954d141a5b4e565a107cd78ba796c476b14c838ba579c443a0e3"
+        """Get the encrypted key for a file using the filePermissions function."""
+        try:
+            if not self.web3.is_connected():
+                raise ValueError("Web3 not connected to blockchain")
+            
+            # Call the filePermissions function to get the encrypted key
+            encrypted_key = self.contract.functions.filePermissions(file_id, owner_address).call()
+            
+            return encrypted_key
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch encrypted key for file {file_id} and owner {owner_address}: {e}")
+            raise

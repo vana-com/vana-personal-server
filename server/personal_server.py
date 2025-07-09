@@ -48,7 +48,7 @@ class PersonalServer:
 
         files_metadata = []
         for file_id in access_permissions.file_ids:
-            file_metadata = self.data_registry.fetch_file_metadata(file_id)
+            file_metadata = self.data_registry.fetch_file_metadata(file_id, request.user_address)
             print(f"File metadata for file {file_id}: {file_metadata}")
             if not file_metadata:
                 raise ValueError(f"File {file_id} not found in the data registry")
@@ -85,10 +85,6 @@ class PersonalServer:
     def fetch_access_permissions(self, app_address: str, request: PersonalServerRequest) -> AccessPermissionsResponse:
         return self.access_permissions.fetch_access_permissions(app_address, request)
     
-    def fetch_file_metadata(self, file_id: int):
-        # TODO Handle missing files or permissions
-        return self.data_registry.fetch_file_metadata(file_id)
-
     def build_prompt(self, prompt_template: str, files_content: list[str]):
         concatenated_data = "\n" + PROMPT_DATA_SEPARATOR.join(files_content) + "\n" + PROMPT_DATA_SEPARATOR
         return prompt_template.replace("{{data}}", concatenated_data)
