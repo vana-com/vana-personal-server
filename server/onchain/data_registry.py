@@ -105,10 +105,17 @@ class DataRegistry:
             # Debug: Print the raw file data
             print(f"Raw file data for file {file_id}: {file_data}")
             
-            # Use attribute access for the latest web3 SDK
-            file_id_from_contract = file_data.id
-            owner_address = file_data.ownerAddress
-            public_url = file_data.url
+            # Handle tuple format from contract call
+            if isinstance(file_data, tuple):
+                # Tuple format: (id, ownerAddress, url, addedAtBlock)
+                file_id_from_contract = file_data[0]
+                owner_address = file_data[1]
+                public_url = file_data[2]
+            else:
+                # Object format (fallback)
+                file_id_from_contract = file_data.id
+                owner_address = file_data.ownerAddress
+                public_url = file_data.url
             
             # Debug: Print the parsed file data
             print(f"Parsed file data: id={file_id_from_contract}, owner={owner_address}, url={public_url}")

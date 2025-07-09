@@ -120,13 +120,23 @@ class AccessPermissions:
             # Debug: Print the raw permission data
             print(f"Raw permission data: {permission_data}")
             
-            # Use attribute access for the latest web3 SDK
-            result = {
-                'user': permission_data.user,
-                'nonce': permission_data.nonce,
-                'grant': permission_data.grant,
-                'signature': permission_data.signature
-            }
+            # Handle tuple format from contract call
+            if isinstance(permission_data, tuple):
+                # Tuple format: (user, nonce, grant, signature)
+                result = {
+                    'user': permission_data[0],
+                    'nonce': permission_data[1],
+                    'grant': permission_data[2],
+                    'signature': permission_data[3]
+                }
+            else:
+                # Object format (fallback)
+                result = {
+                    'user': permission_data.user,
+                    'nonce': permission_data.nonce,
+                    'grant': permission_data.grant,
+                    'signature': permission_data.signature
+                }
             
             # Debug: Print the parsed permission data
             print(f"Parsed permission data: {result}")
