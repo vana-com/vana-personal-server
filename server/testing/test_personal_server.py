@@ -4,7 +4,7 @@ import sys
 from dotenv import load_dotenv
 from eth_account.messages import encode_defunct
 from web3 import Web3
-from eciespy import decrypt as ecies_decrypt
+from ecies import decrypt as ecies_decrypt
 
 from personal_server import PersonalServer
 from llm import Llm

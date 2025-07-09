@@ -286,19 +286,10 @@ def test_real_personal_server_flow():
     application_private_key = "bce540d49a5a7f3982f20937b2c4b9d2010dc4ba6f8a9c77ea1221366f062ab7"
     signature = web3.eth.account.sign_message(message_hash, private_key=application_private_key)
 
-    # Prepare mocks
-    mock_file_metadata = FileMetadata(
-        file_id=file_id,
-        owner_address=user_address,
-        public_url="https://example.com/test_file.json",
-        encrypted_key=encrypted_symmetric_key_hex
-    )
-    mock_access_permissions = AccessPermissionsResponse(
-        app_address="0x1234567890123456789012345678901234567890",
-        file_ids={file_id},
-        operation="llm_inference",
-        parameters={"prompt": prompt_template}
-    )
+    # Note: Using real contract integrations - make sure permission_id and file_id exist on Moksha
+    print(f"⚠️  Using real contract integrations on Moksha")
+    print(f"⚠️  Permission ID: {permission_id} must exist on blockchain")
+    print(f"⚠️  File ID: {file_id} must exist in data registry")
 
     # Patch only the external dependencies (but not contract integrations or decrypt)
     context_managers = [
