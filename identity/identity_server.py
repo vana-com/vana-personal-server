@@ -34,16 +34,16 @@ class IdentityServer:
     
 
     
-    def derive_user_server_address(self, user_address: str) -> str:
+    def derive_user_server_address(self, user_address: str) -> Dict[str, Any]:
         """
-        Derive only the deterministic address for a user's server based on their address.
+        Derive the deterministic address and public key for a user's server based on their address.
         This is the address that will be stored in the smart contract.
         
         Args:
             user_address: User's Ethereum address
             
         Returns:
-            The derived Ethereum address for the user's server
+            Dictionary containing the derived address and public key for the user's server
         """
         try:
             # Validate inputs
@@ -65,7 +65,10 @@ class IdentityServer:
             
             logger.info(f"Successfully derived address for user {user_address}: {crypto_keys.address}")
             
-            return crypto_keys.address
+            return {
+                "address": crypto_keys.address,
+                "public_key": crypto_keys.public_key_hex
+            }
             
         except Exception as e:
             logger.error(f"Failed to derive address for user {user_address}: {e}")
