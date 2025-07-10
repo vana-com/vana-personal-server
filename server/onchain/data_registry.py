@@ -93,7 +93,7 @@ class DataRegistry:
             abi=self.data_registry_abi
         )
 
-    def fetch_file_metadata(self, file_id: int, user_address: str) -> Optional[FileMetadata]:
+    def fetch_file_metadata(self, file_id: int, personal_server_address: str) -> Optional[FileMetadata]:
         """Fetch file metadata from the DataRegistry contract"""
         try:
             if not self.web3.is_connected():
@@ -120,10 +120,8 @@ class DataRegistry:
             # Debug: Print the parsed file data
             print(f"Parsed file data: id={file_id_from_contract}, owner={owner_address}, url={public_url}")
             
-            # For now, we need to get the encrypted key from somewhere else
-            # This might be stored separately or derived from the file data
-            # For testing, we'll use a placeholder
-            encrypted_key = self._get_encrypted_key_for_file(file_id, owner_address)
+            # Get the encrypted key using the personal server address (not the file owner)
+            encrypted_key = self._get_encrypted_key_for_file(file_id, personal_server_address)
             
             return FileMetadata(
                 file_id=file_id_from_contract,

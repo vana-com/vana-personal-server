@@ -50,13 +50,17 @@ class PersonalServer:
         # Derive the personal server private key based on user address
         user_server_keys = self.identity_server.derive_user_server_address(request.user_address)
         personal_server_private_key = user_server_keys["private_key"]
+        personal_server_address = user_server_keys["address"]
 
         files_metadata = []
         for file_id in access_permissions.file_ids:
-            file_metadata = self.data_registry.fetch_file_metadata(file_id, request.user_address)
-            print(f"File metadata for file {file_id}: {file_metadata}")
+            file_metadata = self.data_registry.fetch_file_metadata(file_id, personal_server_address)
+
             if not file_metadata:
                 raise ValueError(f"File {file_id} not found in the data registry")
+
+            if not file_metadata.encrypted_key:
+                raise ValueError(f"Encryption key not found for file {file_id}. Most likely {personal_server_address} is not permitted to decryot the file.")
 
             files_metadata.append(file_metadata)
 
