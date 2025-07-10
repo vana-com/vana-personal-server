@@ -23,8 +23,9 @@ def test_ecies_decryption():
         # Convert hex to bytes
         encrypted_symmetric_key = bytes.fromhex(encrypted_symmetric_key_hex)
         
-        # Test ECIES decryption
-        decrypted_symmetric_key = ecies_decrypt(personal_server_private_key, encrypted_symmetric_key)
+        # Test ECIES decryption - convert private key from hex string to bytes
+        private_key_bytes = bytes.fromhex(personal_server_private_key.replace('0x', ''))
+        decrypted_symmetric_key = ecies_decrypt(private_key_bytes, encrypted_symmetric_key)
         print(f"✅ Successfully decrypted symmetric key: {decrypted_symmetric_key.hex()}")
         
         # Test that the personal server can use this key

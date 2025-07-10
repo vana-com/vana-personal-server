@@ -6,13 +6,13 @@ import json
 
 import web3
 from eth_account.messages import encode_defunct
-from ecies import decrypt as ecies_decrypt
+from files import decrypt_with_wallet_private_key, decrypt_user_data
 
 from entities import AccessPermissionsResponse, PersonalServerRequest
 from onchain.data_registry import DataRegistry
 from onchain.access_permissions import AccessPermissions
 from llm import Llm
-from files import download_file, decrypt
+from files import download_file
 from identity_server import IdentityServer
 
 LLM_INFERENCE_OPERATION = "llm_inference"
@@ -52,6 +52,8 @@ class PersonalServer:
         personal_server_private_key = user_server_keys["private_key"]
         personal_server_address = user_server_keys["address"]
 
+        print(f"Derived server address: {personal_server_address}")
+
         files_metadata = []
         for file_id in access_permissions.file_ids:
             file_metadata = self.data_registry.fetch_file_metadata(file_id, personal_server_address)
@@ -69,13 +71,12 @@ class PersonalServer:
             encrypted_file_content = download_file(file_metadata.public_url)
             print(f"Fetched file content from {file_metadata.public_url}")
             # Decrypt file_metadata.encrypted_key with personal_server_private_key using ECIES
-            encrypted_key_bytes = bytes.fromhex(file_metadata.encrypted_key)
-            decrypted_key = ecies_decrypt(personal_server_private_key, encrypted_key_bytes)
-            print(f"Decrypted key: {decrypted_key}")
+            decrypted_encryption_key = decrypt_with_wallet_private_key(file_metadata.encrypted_key, personal_server_private_key)
+            print(f"Decrypted key: {decrypted_encryption_key}")
 
             # Decrypt actual file content with the decrypted key
-            decrypted_key_hex = decrypted_key.hex()
-            decrypted_file_content = decrypt(decrypted_key_hex, encrypted_file_content)
+            decrypted_file_content_bytes = decrypt_user_data(encrypted_file_content, decrypted_encryption_key)
+            decrypted_file_content = decrypted_file_content_bytes.decode('utf-8')
             print(f"Decrypted file content: {decrypted_file_content}")
             files_content.append(decrypted_file_content)
 

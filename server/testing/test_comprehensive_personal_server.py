@@ -124,7 +124,7 @@ def test_comprehensive_personal_server():
         
         # Mock only the problematic dependencies
         with patch('personal_server.download_file', return_value=encrypted_file_content.encode()):
-            with patch('personal_server.decrypt', return_value=test_file_content):
+            with patch('personal_server.decrypt_user_data', return_value=test_file_content.encode()):
                 # Test the key derivation and encryption flow
                 print("✅ File download and decryption mocked successfully")
                 
@@ -272,8 +272,8 @@ def test_real_personal_server_flow():
         print("⚠️  ECIES library not available, using mock encryption and decryption")
         # Use a valid hex string (32 bytes)
         encrypted_symmetric_key_hex = "00" * 32
-        # Patch ecies_decrypt to just return the symmetric key
-        ecies_decrypt_patch = patch("personal_server.ecies_decrypt", return_value=symmetric_key)
+        # Patch decrypt_with_wallet_private_key to just return the symmetric key as hex
+        ecies_decrypt_patch = patch("personal_server.decrypt_with_wallet_private_key", return_value=symmetric_key.hex())
 
     # Prepare request JSON and signature
     request_data = {
@@ -291,10 +291,21 @@ def test_real_personal_server_flow():
     print(f"⚠️  Permission ID: {permission_id} must exist on blockchain")
     print(f"⚠️  File ID: {file_id} must exist in data registry")
 
+    # Mock FileMetadata to have an encrypted key
+    from entities import FileMetadata
+    from onchain.data_registry import DataRegistry
+    mock_file_metadata = FileMetadata(
+        file_id=1654008,
+        owner_address=user_address,
+        public_url="ipfs://QmYZhd9dmiFaGsPs3y7C28L9oEuE8JSJFr8FgTfr39t3Qr",
+        encrypted_key=encrypted_symmetric_key_hex
+    )
+    
     # Patch only the external dependencies (but not contract integrations or decrypt)
     context_managers = [
         patch("personal_server.download_file", return_value=b"ENCRYPTED_CONTENT"),
-        patch.object(PersonalServer, "llm", create=True)
+        patch("personal_server.decrypt_user_data", return_value=test_file_content.encode()),
+        patch.object(DataRegistry, "fetch_file_metadata", return_value=mock_file_metadata)
     ]
     if ecies_decrypt_patch:
         context_managers.append(ecies_decrypt_patch)
@@ -302,8 +313,11 @@ def test_real_personal_server_flow():
     from contextlib import ExitStack
     with ExitStack() as stack:
         mocks = [stack.enter_context(cm) for cm in context_managers]
-        mock_llm = mocks[-1]
+        
+        # Create mock LLM
+        mock_llm = Mock()
         mock_llm.run = Mock(return_value="LLM OUTPUT: " + test_file_content)
+        
         # Create the real PersonalServer instance
         server = PersonalServer(llm=mock_llm)
         output = server.execute(request_json, signature.signature)

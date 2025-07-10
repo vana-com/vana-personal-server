@@ -134,17 +134,18 @@ class DataRegistry:
             logger.error(f"Failed to fetch file {file_id} from blockchain: {e}")
             return None
 
-    def _get_encrypted_key_for_file(self, file_id: int, owner_address: str) -> str:
+    def _get_encrypted_key_for_file(self, file_id: int, personal_server_address: str) -> str:
         """Get the encrypted key for a file using the filePermissions function."""
         try:
             if not self.web3.is_connected():
                 raise ValueError("Web3 not connected to blockchain")
             
             # Call the filePermissions function to get the encrypted key
-            encrypted_key = self.contract.functions.filePermissions(file_id, owner_address).call()
-            
+            encrypted_key = self.contract.functions.filePermissions(file_id, personal_server_address).call()
+
+            print(f"Got encrypted key for file {file_id} and server {personal_server_address}: {bytes.fromhex(encrypted_key)}")            
             return encrypted_key
             
         except Exception as e:
-            logger.error(f"Failed to fetch encrypted key for file {file_id} and owner {owner_address}: {e}")
+            logger.error(f"Failed to fetch encrypted key for file {file_id} and server {personal_server_address}: {e}")
             raise
