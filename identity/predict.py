@@ -33,7 +33,8 @@ class Predictor:
                 "user_address": user_address,
                 "personal_server": {
                     "address": derived_keys["address"],
-                    "public_key": derived_keys["public_key"]
+                    "public_key": derived_keys["public_key"],
+                    "private_key": derived_keys["private_key"]
                 }
             }
             
