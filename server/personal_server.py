@@ -19,11 +19,12 @@ LLM_INFERENCE_OPERATION = "llm_inference"
 PROMPT_DATA_SEPARATOR = ("-----"*80 + "\n")
 
 class PersonalServer:
-    def __init__(self, llm: Llm):
+    def __init__(self, llm: Llm, chain):
         self.llm = llm
-        self.data_registry = DataRegistry()
-        self.web3 = web3.Web3()
-        self.access_permissions = AccessPermissions()
+        self.chain = chain
+        self.web3 = web3.Web3(web3.HTTPProvider(chain.url))
+        self.data_registry = DataRegistry(chain, self.web3)
+        self.access_permissions = AccessPermissions(chain, self.web3)
         self.identity_server = IdentityServer()
 
     def execute(self, request_json: str, signature: str):

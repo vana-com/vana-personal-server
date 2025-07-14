@@ -3,91 +3,16 @@ import logging
 from typing import Optional
 from web3 import Web3
 from entities import FileMetadata
+from .chain import Chain, get_data_registry_address
+from .abi import get_abi
 
 logger = logging.getLogger(__name__)
 
 class DataRegistry:
-    def __init__(self):
-        # Initialize Web3 connection
-        blockchain_url = os.getenv("BLOCKCHAIN_HTTP_URL", "https://rpc.moksha.vana.org")
-        self.web3 = Web3(Web3.HTTPProvider(blockchain_url))
-        
-        # DataRegistry contract address and ABI
-        # TODO Extract addresses and ABIs
-        self.data_registry_address = os.getenv(
-            "DATA_REGISTRY_ADDRESS", 
-            "0x8C8788f98385F6ba1adD4234e551ABba0f82Cb7C"  # DataRegistry Proxy address
-        )
-        
-        # ABI for the files and filePermissions functions from DataRegistryImplementation.ts
-        self.data_registry_abi = [
-            {
-                "inputs": [
-                    {
-                        "internalType": "uint256",
-                        "name": "fileId",
-                        "type": "uint256"
-                    }
-                ],
-                "name": "files",
-                "outputs": [
-                    {
-                        "components": [
-                            {
-                                "internalType": "uint256",
-                                "name": "id",
-                                "type": "uint256"
-                            },
-                            {
-                                "internalType": "address",
-                                "name": "ownerAddress",
-                                "type": "address"
-                            },
-                            {
-                                "internalType": "string",
-                                "name": "url",
-                                "type": "string"
-                            },
-                            {
-                                "internalType": "uint256",
-                                "name": "addedAtBlock",
-                                "type": "uint256"
-                            }
-                        ],
-                        "internalType": "struct IDataRegistry.FileResponse",
-                        "name": "",
-                        "type": "tuple"
-                    }
-                ],
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "inputs": [
-                    {
-                        "internalType": "uint256",
-                        "name": "fileId",
-                        "type": "uint256"
-                    },
-                    {
-                        "internalType": "address",
-                        "name": "account",
-                        "type": "address"
-                    }
-                ],
-                "name": "filePermissions",
-                "outputs": [
-                    {
-                        "internalType": "string",
-                        "name": "",
-                        "type": "string"
-                    }
-                ],
-                "stateMutability": "view",
-                "type": "function"
-            },
-        ]
-        
+    def __init__(self, chain: Chain, web3: Web3):
+        self.web3 = web3
+        self.data_registry_address = get_data_registry_address(chain.chain_id)
+        self.data_registry_abi = get_abi("DataRegistry")
         self.contract = self.web3.eth.contract(
             address=self.data_registry_address,
             abi=self.data_registry_abi
@@ -105,17 +30,10 @@ class DataRegistry:
             # Debug: Print the raw file data
             print(f"Raw file data for file {file_id}: {file_data}")
             
-            # Handle tuple format from contract call
-            if isinstance(file_data, tuple):
-                # Tuple format: (id, ownerAddress, url, addedAtBlock)
-                file_id_from_contract = file_data[0]
-                owner_address = file_data[1]
-                public_url = file_data[2]
-            else:
-                # Object format (fallback)
-                file_id_from_contract = file_data.id
-                owner_address = file_data.ownerAddress
-                public_url = file_data.url
+            # Web3.py returns named tuple with attribute access
+            file_id_from_contract = file_data.id
+            owner_address = file_data.ownerAddress
+            public_url = file_data.url
             
             # Debug: Print the parsed file data
             print(f"Parsed file data: id={file_id_from_contract}, owner={owner_address}, url={public_url}")

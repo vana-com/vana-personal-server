@@ -4,73 +4,24 @@ import os
 from typing import Optional
 import web3
 from web3 import Web3
-from eth_account.messages import encode_defunct
 
 from entities import AccessPermissionsResponse, PersonalServerRequest, GrantData
+from .chain import Chain, get_data_permissions_address
+from .abi import get_abi
 
 logger = logging.getLogger(__name__)
 
 class AccessPermissions:
-    def __init__(self):
-        # Initialize Web3 connection
-        blockchain_url = os.getenv("BLOCKCHAIN_HTTP_URL", "https://rpc.moksha.vana.org")
-        self.web3 = Web3(Web3.HTTPProvider(blockchain_url))
+    def __init__(self, chain: Chain, web3: Web3):
+        self.chain = chain
+        self.web3 = web3
         
-        # TODO Extract addresses and ABIs
-        # PermissionRegistry contract address and ABI
-        self.permission_registry_address = os.getenv(
-            "PERMISSION_REGISTRY_ADDRESS", 
-            "0x31fb1D48f6B2265A4cAD516BC39E96a18fb7c8de"  # Moksha Address
-        )
-        
-        # Full ABI from PermissionRegistryImplementation.ts
-        self.permission_registry_abi = [
-            {
-                "inputs": [
-                    {
-                        "internalType": "uint256",
-                        "name": "permissionId",
-                        "type": "uint256"
-                    }
-                ],
-                "name": "permissions",
-                "outputs": [
-                    {
-                        "components": [
-                            {
-                                "internalType": "address",
-                                "name": "user",
-                                "type": "address"
-                            },
-                            {
-                                "internalType": "uint256",
-                                "name": "nonce",
-                                "type": "uint256"
-                            },
-                            {
-                                "internalType": "string",
-                                "name": "grant",
-                                "type": "string"
-                            },
-                            {
-                                "internalType": "bytes",
-                                "name": "signature",
-                                "type": "bytes"
-                            }
-                        ],
-                        "internalType": "struct IDataPermission.Permission",
-                        "name": "",
-                        "type": "tuple"
-                    }
-                ],
-                "stateMutability": "view",
-                "type": "function"
-            }
-        ]
+        self.data_permissions_address = get_data_permissions_address(chain.chain_id)
+        self.data_permissions_abi = get_abi("DataPermissions")
         
         self.contract = self.web3.eth.contract(
-            address=self.permission_registry_address,
-            abi=self.permission_registry_abi
+            address=self.data_permissions_address,
+            abi=self.data_permissions_abi
         )
 
     def fetch_access_permissions(
@@ -120,23 +71,17 @@ class AccessPermissions:
             # Debug: Print the raw permission data
             print(f"Raw permission data: {permission_data}")
             
-            # Handle tuple format from contract call
-            if isinstance(permission_data, tuple):
-                # Tuple format: (user, nonce, grant, signature)
-                result = {
-                    'user': permission_data[0],
-                    'nonce': permission_data[1],
-                    'grant': permission_data[2],
-                    'signature': permission_data[3]
-                }
-            else:
-                # Object format (fallback)
-                result = {
-                    'user': permission_data.user,
-                    'nonce': permission_data.nonce,
-                    'grant': permission_data.grant,
-                    'signature': permission_data.signature
-                }
+            # Web3.py automatically converts the struct to a named tuple with field access
+            # The ABI defines the structure, so we can access fields by name
+            result = {
+                'id': permission_data.id,
+                'grantor': permission_data.grantor,
+                'nonce': permission_data.nonce,
+                'grant': permission_data.grant,
+                'signature': permission_data.signature,
+                'isActive': permission_data.isActive,
+                'fileIds': permission_data.fileIds
+            }
             
             # Debug: Print the parsed permission data
             print(f"Parsed permission data: {result}")

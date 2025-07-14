@@ -6,6 +6,7 @@ import traceback
 import sys
 import os
 from cog import Secret
+from onchain.chain import MOKSHA, get_chain
 
 load_dotenv()
 
@@ -19,10 +20,12 @@ class Predictor:
         replicate_api_token: Secret, # Apparently must be added in order to forward the request to replicate.Client (for LLM)
         signature: str, 
         request_json: str, 
+        chain_id: int = MOKSHA.chain_id, 
     ) -> str:
         try:
+            chain = get_chain(chain_id)
             llm = Llm(client=replicate.Client(api_token=replicate_api_token.get_secret_value()))
-            personal_server = PersonalServer(llm)
+            personal_server = PersonalServer(llm, chain)
             
             output = personal_server.execute(request_json, signature)
             
