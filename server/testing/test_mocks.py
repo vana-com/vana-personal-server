@@ -63,7 +63,6 @@ def test_personal_server():
         
         from onchain.chain import MOKSHA
         from unittest.mock import patch, Mock
-        from entities import AccessPermissionsResponse, FileMetadata
         
         # Mock blockchain interactions
         mock_permission_data = {

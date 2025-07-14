@@ -8,4 +8,5 @@ eth-keys>=0.4.0
 coincurve>=21.0.0
 requests>=2.31.0
 python-gnupg>=0.5.0
-pycryptodome>=3.19.0 
+pycryptodome>=3.19.0
+jsonschema>=4.21.0 

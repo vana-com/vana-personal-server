@@ -2,6 +2,7 @@ import logging
 import os
 import json
 from typing import Dict, Any
+from utils.crypto_service import CryptoService
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +56,8 @@ class IdentityServer:
             derivation_index = self._user_identity_to_index(user_address)
             logger.info(f"Derived index {derivation_index} for user {user_address}")
             
-            # Import and use the existing crypto service
-            from crypto_service import CryptoService
             crypto_service = CryptoService()
             
-            # Use the existing method to derive keys
             crypto_keys = crypto_service.derive_ethereum_keys(
                 self.mnemonic, derivation_index, self.language
             )

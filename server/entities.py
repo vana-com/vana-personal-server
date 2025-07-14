@@ -1,20 +1,14 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
+
+# Import grant models for use in access permissions
+from grants.grant_models import GrantFile
 
 
 @dataclass
 class PersonalServerRequest:
     user_address: str
     permission_id: int
-
-
-@dataclass
-class AccessPermissionsResponse:
-    app_address: str
-    file_ids: set[int]
-    operation: str
-    parameters: dict
-
 
 @dataclass
 class FileMetadata:
@@ -28,3 +22,14 @@ class FileMetadata:
 class GrantData:
     typedData: dict
     signature: str
+
+
+@dataclass
+class PermissionData:
+    id: int
+    grantor: str
+    nonce: int
+    grant: str
+    signature: bytes
+    is_active: bool
+    file_ids: List[int]
