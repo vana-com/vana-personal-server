@@ -1,7 +1,7 @@
 import replicate
 from dotenv import load_dotenv
 from server import Server
-from llm import Llm
+from llm.llm import Llm
 import traceback
 import sys
 import os

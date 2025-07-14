@@ -8,6 +8,7 @@ from web3 import Web3
 from entities import AccessPermissionsResponse, PersonalServerRequest, GrantData
 from .chain import Chain, get_data_permissions_address
 from .abi import get_abi
+from files import download_file
 
 logger = logging.getLogger(__name__)
 
@@ -66,21 +67,20 @@ class AccessPermissions:
                 raise ValueError("Web3 not connected to blockchain")
             
             # Call the permissions function
+            print(f"Fetching permission {permission_id} from blockchain")
             permission_data = self.contract.functions.permissions(permission_id).call()
             
             # Debug: Print the raw permission data
             print(f"Raw permission data: {permission_data}")
             
-            # Web3.py automatically converts the struct to a named tuple with field access
-            # The ABI defines the structure, so we can access fields by name
             result = {
-                'id': permission_data.id,
-                'grantor': permission_data.grantor,
-                'nonce': permission_data.nonce,
-                'grant': permission_data.grant,
-                'signature': permission_data.signature,
-                'isActive': permission_data.isActive,
-                'fileIds': permission_data.fileIds
+                'id': permission_data[0],
+                'grantor': permission_data[1],
+                'nonce': permission_data[2],
+                'grant': permission_data[3],
+                'signature': permission_data[4],
+                'isActive': permission_data[5],
+                'fileIds': permission_data[6]
             }
             
             # Debug: Print the parsed permission data
@@ -95,22 +95,7 @@ class AccessPermissions:
     def _fetch_grant_from_ipfs(self, grant_url: str) -> Optional[GrantData]:
         """Fetch grant data from IPFS or HTTP URL"""
         try:
-            import requests
-            
-            # Convert IPFS URL to HTTP gateway URL if needed
-            if grant_url.startswith("ipfs://"):
-                fetch_url = grant_url.replace("ipfs://", "https://ipfs.io/ipfs/")
-            else:
-                fetch_url = grant_url
-            
-            print(f"Fetching grant from: {fetch_url}")
-            
-            # Fetch the grant data
-            response = requests.get(fetch_url, timeout=10)
-            response.raise_for_status()
-            
-            grant_json = response.json()
-            print(f"Grant JSON: {grant_json}")
+            grant_json = download_file(grant_url)
             
             # Support both old (typedData) and new (flat) grant structure
             if "typedData" in grant_json:

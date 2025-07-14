@@ -15,7 +15,7 @@ from onchain.data_registry import DataRegistry
 from onchain.access_permissions import AccessPermissions
 from llm.llm import Llm
 from files import download_file
-from identity.identity_server import IdentityServer
+from utils.identity_server import IdentityServer
 
 LLM_INFERENCE_OPERATION = "llm_inference"
 PROMPT_DATA_SEPARATOR = ("-----"*80 + "\n")
