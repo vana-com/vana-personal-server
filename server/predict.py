@@ -1,6 +1,6 @@
 import replicate
 from dotenv import load_dotenv
-from personal_server import PersonalServer
+from server import Server
 from llm import Llm
 import traceback
 import sys
@@ -25,9 +25,9 @@ class Predictor:
         try:
             chain = get_chain(chain_id)
             llm = Llm(client=replicate.Client(api_token=replicate_api_token.get_secret_value()))
-            personal_server = PersonalServer(llm, chain)
+            server = Server(llm, chain)
             
-            output = personal_server.execute(request_json, signature)
+            output = server.execute(request_json, signature)
             
             if output is None:
                 return "Error: No output generated"

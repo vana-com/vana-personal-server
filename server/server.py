@@ -1,5 +1,7 @@
 import logging
 import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 logger = logging.getLogger(__name__)
 import json
@@ -11,14 +13,14 @@ from files import decrypt_with_wallet_private_key, decrypt_user_data
 from entities import AccessPermissionsResponse, PersonalServerRequest
 from onchain.data_registry import DataRegistry
 from onchain.access_permissions import AccessPermissions
-from llm import Llm
+from llm.llm import Llm
 from files import download_file
-from identity_server import IdentityServer
+from identity.identity_server import IdentityServer
 
 LLM_INFERENCE_OPERATION = "llm_inference"
 PROMPT_DATA_SEPARATOR = ("-----"*80 + "\n")
 
-class PersonalServer:
+class Server:
     def __init__(self, llm: Llm, chain):
         self.llm = llm
         self.chain = chain
@@ -45,6 +47,9 @@ class PersonalServer:
 
         if not access_permissions.file_ids or len(access_permissions.file_ids) == 0:
             raise ValueError("No file IDs found in permission")
+        
+        if access_permissions.app_address != app_address:
+            raise ValueError("App address does not match the app address in the access permissions")
 
         logger.info(f"App {app_address} has access to execute the request: {request}")
 

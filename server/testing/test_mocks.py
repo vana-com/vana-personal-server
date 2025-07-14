@@ -6,8 +6,12 @@ from eth_account.messages import encode_defunct
 from web3 import Web3
 from ecies import decrypt as ecies_decrypt
 
-from personal_server import PersonalServer
-from llm import Llm
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from server import Server
+from llm.llm import Llm
 
 load_dotenv()
 
@@ -37,7 +41,7 @@ def test_ecies_decryption():
         return False
 
 def test_personal_server():
-    """Test the full personal server flow with new permission_id structure"""
+    """Test the full personal server flow with mocked blockchain interactions"""
     print("\nTesting full personal server flow...")
     
     web3 = Web3()
@@ -57,12 +61,54 @@ def test_personal_server():
         dummy_llm = Llm(client=None)
         dummy_llm.run = lambda prompt: "Processed prompt: " + prompt
         
-        personal_server = PersonalServer(llm=dummy_llm)
+        from onchain.chain import MOKSHA
+        from unittest.mock import patch, Mock
+        from entities import AccessPermissionsResponse, FileMetadata
         
-        output = personal_server.execute(request, signature.signature)
-        print(f"✅ Personal server executed successfully")
-        print(f"Output: {output}")
-        return True
+        # Mock blockchain interactions
+        mock_permission_data = {
+            'id': 6,
+            'grantor': "0x1234567890123456789012345678901234567890",
+            'nonce': 1,
+            'grant': "ipfs://QmTestGrantData",
+            'signature': b"test_signature",
+            'isActive': True,
+            'fileIds': [999]
+        }
+        
+        # Mock grant data
+        mock_grant_data = Mock()
+        mock_grant_data.typedData = {
+            "message": {
+                "operation": "llm_inference",
+                "files": [999],
+                "parameters": {
+                    "prompt": "Analyze this data: {{data}}"
+                }
+            }
+        }
+        mock_grant_data.signature = "test_signature"
+        
+        # Mock file metadata
+        mock_file_metadata = FileMetadata(
+            file_id=999,
+            owner_address="0xd7Ae9319049f0B6cA9AD044b165c5B4F143EF451",
+            public_url="ipfs://QmTestFile",
+            encrypted_key="test_encrypted_key"
+        )
+        
+        # Apply all mocks
+        with patch('server.download_file', return_value=b"test_file_content"):
+            with patch('server.decrypt_with_wallet_private_key', return_value="test_symmetric_key"):
+                with patch('server.decrypt_user_data', return_value=b"decrypted_file_content"):
+                    with patch('onchain.access_permissions.AccessPermissions._fetch_permission_from_blockchain', return_value=mock_permission_data):
+                        with patch('onchain.access_permissions.AccessPermissions._fetch_grant_from_ipfs', return_value=mock_grant_data):
+                            with patch('onchain.data_registry.DataRegistry.fetch_file_metadata', return_value=mock_file_metadata):
+                                personal_server = Server(llm=dummy_llm, chain=MOKSHA)
+                                output = personal_server.execute(request, signature.signature)
+                                print(f"✅ Personal server executed successfully")
+                                print(f"Output: {output}")
+                                return True
         
     except Exception as e:
         print(f"❌ Personal server test failed: {e}")

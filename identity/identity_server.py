@@ -55,7 +55,7 @@ class IdentityServer:
             logger.info(f"Derived index {derivation_index} for user {user_address}")
             
             # Import and use the existing crypto service
-            from crypto_service import CryptoService
+            from .crypto_service import CryptoService
             crypto_service = CryptoService()
             
             # Use the existing method to derive keys
