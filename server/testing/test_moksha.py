@@ -17,7 +17,7 @@ sys.modules['pgpy.pgp'] = MagicMock()
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from server import Server
-from entities import PersonalServerRequest, AccessPermissionsResponse, FileMetadata
+from entities import PersonalServerRequest, FileMetadata
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 from identity.identity_server import IdentityServer
 
@@ -100,7 +100,6 @@ def test_comprehensive_personal_server():
         # Step 5: Prepare correct request JSON
         print("\n5️⃣ Preparing request JSON...")
         request_data = {
-            "user_address": user_address,
             "permission_id": permission_id
         }
         request_json = json.dumps(request_data)
@@ -158,13 +157,10 @@ def test_comprehensive_personal_server():
         print("\n9️⃣ Testing request JSON structure...")
         parsed_request = json.loads(request_json)
         
-        required_fields = ["user_address", "permission_id"]
+        required_fields = ["permission_id"]
         for field in required_fields:
             if field not in parsed_request:
                 raise ValueError(f"❌ Missing required field: {field}")
-        
-        if parsed_request["user_address"] != user_address:
-            raise ValueError("❌ User address mismatch")
         
         if parsed_request["permission_id"] != permission_id:
             raise ValueError("❌ Permission ID mismatch")
@@ -277,7 +273,6 @@ def test_real_personal_server_flow():
 
     # Prepare request JSON and signature
     request_data = {
-        "user_address": user_address,
         "permission_id": permission_id
     }
     request_json = json.dumps(request_data)

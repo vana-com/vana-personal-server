@@ -13,7 +13,7 @@ from eth_account.messages import encode_defunct
 from files import decrypt_user_data, decrypt_with_wallet_private_key, download_file
 from grants.fetch_grant import fetch_grant
 from llm.llm import Llm
-from onchain.access_permissions import AccessPermissions
+from onchain.data_permissions import DataPermissions
 from onchain.data_registry import DataRegistry
 from utils.identity_server import IdentityServer
 
@@ -26,7 +26,7 @@ class Server:
         self.chain = chain
         self.web3 = web3.Web3(web3.HTTPProvider(chain.url))
         self.data_registry = DataRegistry(chain, self.web3)
-        self.access_permissions = AccessPermissions(chain, self.web3)
+        self.data_permissions = DataPermissions(chain, self.web3)
         self.identity_server = IdentityServer()
 
     def execute(self, request_json: str, signature: str):
@@ -39,7 +39,7 @@ class Server:
         print(f"App address: {app_address}")
         
         # Fetch permission from blockchain
-        permission = self.access_permissions.fetch_permission_from_blockchain(request.permission_id)
+        permission = self.data_permissions.fetch_permission_from_blockchain(request.permission_id)
         if not permission:
             raise ValueError(f"Permission {request.permission_id} not found on blockchain")
         

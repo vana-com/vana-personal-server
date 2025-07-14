@@ -9,7 +9,7 @@ import os
 import time
 
 # Add the server directory to the path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 from grants.grant_models import GrantFile, GrantValidationOptions
 from grants.grant_validation import validate_grant, validate_grant_schema

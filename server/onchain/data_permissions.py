@@ -10,7 +10,7 @@ from .chain import Chain, get_data_permissions_address
 logger = logging.getLogger(__name__)
 
 
-class AccessPermissions:
+class DataPermissions:
     def __init__(self, chain: Chain, web3: Web3):
         self.chain = chain
         self.web3 = web3

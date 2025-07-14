@@ -7,7 +7,6 @@ from grants.grant_models import GrantFile
 
 @dataclass
 class PersonalServerRequest:
-    user_address: str
     permission_id: int
 
 @dataclass

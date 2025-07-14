@@ -6,4 +6,5 @@ class Llm:
         self.model_name = "deepseek-ai/deepseek-v3"
 
     def run(self, prompt: str):
-        return self.client.run(self.model_name, input={"prompt": prompt})
+        result = self.client.run(self.model_name, input={"prompt": prompt})
+        return "\n".join(result)
