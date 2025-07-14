@@ -20,7 +20,7 @@ class AccessPermissions:
         # PermissionRegistry contract address and ABI
         self.permission_registry_address = os.getenv(
             "PERMISSION_REGISTRY_ADDRESS", 
-            "0x3acB2023DF2617EFb61422BA0c8C6E97916961e0"  # Moksha Address
+            "0x31fb1D48f6B2265A4cAD516BC39E96a18fb7c8de"  # Moksha Address
         )
         
         # Full ABI from PermissionRegistryImplementation.ts
