@@ -1,4 +1,3 @@
-import os
 import logging
 from typing import Optional
 from web3 import Web3
@@ -28,14 +27,14 @@ class DataRegistry:
             file_data = self.contract.functions.files(file_id).call()
             
             # Debug: Print the raw file data
-            print(f"Raw file data for file {file_id}: {file_data}")
+            logger.info(f"Raw file data for file {file_id}: {file_data}")
             
             file_id_from_contract = file_data[0]
             owner_address = file_data[1]
             public_url = file_data[2]
             
             # Debug: Print the parsed file data
-            print(f"Parsed file data: id={file_id_from_contract}, owner={owner_address}, url={public_url}")
+            logger.info(f"Parsed file data: id={file_id_from_contract}, owner={owner_address}, url={public_url}")
             
             # Get the encrypted key using the personal server address (not the file owner)
             encrypted_key = self._get_encrypted_key_for_file(file_id, personal_server_address)
@@ -60,7 +59,7 @@ class DataRegistry:
             # Call the filePermissions function to get the encrypted key
             encrypted_key = self.contract.functions.filePermissions(file_id, personal_server_address).call()
 
-            print(f"Got encrypted key for file {file_id} and server {personal_server_address}: {bytes.fromhex(encrypted_key)}")            
+            logger.info(f"Got encrypted key for file {file_id} and server {personal_server_address}: {bytes.fromhex(encrypted_key)}")            
             return encrypted_key
             
         except Exception as e:

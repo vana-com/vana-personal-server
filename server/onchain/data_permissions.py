@@ -29,11 +29,8 @@ class DataPermissions:
                 raise ValueError("Web3 not connected to blockchain")
 
             # Call the permissions function
-            print(f"Fetching permission {permission_id} from blockchain")
+            logger.info(f"Fetching permission {permission_id} from blockchain")
             permission_data = self.contract.functions.permissions(permission_id).call()
-
-            # Debug: Print the raw permission data
-            print(f"Raw permission data: {permission_data}")
 
             result = PermissionData(
                 id=permission_data[0],
@@ -45,8 +42,8 @@ class DataPermissions:
                 file_ids=permission_data[6],
             )
 
-            # Debug: Print the parsed permission data
-            print(f"Parsed permission data: {result}")
+            # Debug: logger.info the parsed permission data
+            logger.info(f"Parsed permission data: {result}")
 
             return result
 

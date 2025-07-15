@@ -1,15 +1,16 @@
+import logging
 import replicate
 from dotenv import load_dotenv
 from server import Server
 from llm.llm import Llm
 import traceback
 import sys
-import os
 from cog import Secret
 from onchain.chain import MOKSHA, get_chain
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 
 class Predictor:
     def setup(self):
@@ -35,5 +36,5 @@ class Predictor:
             return output
         except Exception as e:
             error_msg = f"Error in predict: {str(e)}\n{traceback.format_exc()}"
-            print(error_msg, file=sys.stderr)
+            logger.error(error_msg)
             return f"Error: {str(e)}"
