@@ -1,7 +1,6 @@
 import gnupg
 import hashlib
 import hmac
-import requests
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from coincurve import PublicKey
@@ -102,39 +101,3 @@ def decrypt_user_data(encrypted_data: bytes, encryption_key: str) -> bytes:
         
     except Exception as e:
         raise ValueError(f"Failed to decrypt user data: {str(e)}")
-
-
-def fetch_and_decrypt_ipfs_content(ipfs_url: str, private_key: str, encrypted_key_hex: str) -> bytes:
-    """
-    Complete flow: decrypt the encryption key, fetch IPFS content, and decrypt it.
-    
-    Args:
-        ipfs_url: IPFS URL (e.g., "ipfs://QmdXMUxRxKuxikKHcuPP2K62MUR98KQAePe8tYVemkotHD")
-        private_key: Wallet private key (hex string)
-        encrypted_key_hex: Encrypted encryption key (hex string)
-        
-    Returns:
-        The decrypted content as bytes
-    """
-    try:
-        # Step 1: Decrypt the encryption key
-        decrypted_key = decrypt_with_wallet_private_key(encrypted_key_hex, private_key)
-        
-        # Step 2: Fetch content from IPFS
-        if ipfs_url.startswith("ipfs://"):
-            ipfs_hash = ipfs_url[7:]  # Remove "ipfs://" prefix
-            http_url = f"https://ipfs.io/ipfs/{ipfs_hash}"
-        else:
-            http_url = ipfs_url
-            
-        response = requests.get(http_url)
-        response.raise_for_status()
-        encrypted_content = response.content
-        
-        # Step 3: Decrypt the content using the decrypted key
-        decrypted_content = decrypt_user_data(encrypted_content, decrypted_key)
-        
-        return decrypted_content
-        
-    except Exception as e:
-        raise ValueError(f"Failed to fetch and decrypt IPFS content: {str(e)}")
