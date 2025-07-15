@@ -12,34 +12,36 @@ from statistics import mean, median, stdev
 # Load environment variables
 load_dotenv()
 
+
 def call_model(prompt: str) -> str:
     """Call the deployed model with a prompt."""
     try:
         output = replicate.run(
             "vana-com/personal-server:841509ee8fb0c02640150d607778479d1a26d4758f404eed9da6b54f7a4a0eac",
-            input={"prompt": prompt, "bearer_token": os.getenv("REPLICATE_API_TOKEN")}
+            input={"prompt": prompt, "bearer_token": os.getenv("REPLICATE_API_TOKEN")},
         )
-        
+
         if output is None:
             return "No response received from model"
         elif isinstance(output, str):
             return output
-        elif hasattr(output, '__iter__') and not isinstance(output, str):
+        elif hasattr(output, "__iter__") and not isinstance(output, str):
             return "".join(str(chunk) for chunk in output)
         else:
             return str(output)
-            
+
     except Exception as e:
         print(f"❌ Error: {e}")
         return None
 
+
 def generate_test_prompts():
     """Generate test prompts of different lengths."""
-    
+
     # 100 characters prompt
     prompt_100 = "Write a short story about a programmer who discovers a mysterious bug that leads to an unexpected adventure in the digital realm."
-    
-    # 1000 characters prompt  
+
+    # 1000 characters prompt
     prompt_1000 = """You are an expert software engineer with 15 years of experience in distributed systems, machine learning, and cloud architecture. 
     
     I need you to help me design a scalable microservices architecture for a real-time data processing platform that handles millions of events per second. 
@@ -61,7 +63,7 @@ def generate_test_prompts():
     6. Deployment strategy
     
     Focus on best practices for high availability, fault tolerance, and performance optimization."""
-    
+
     # 10000 characters prompt
     prompt_10000 = """You are a senior technical architect with extensive experience in building enterprise-grade applications. I need comprehensive guidance on designing and implementing a sophisticated data analytics platform that will serve as the backbone for our organization's business intelligence and machine learning initiatives.
 
@@ -266,54 +268,57 @@ You are a senior technical architect with extensive experience in building enter
     - Troubleshooting and debugging tools
     - Documentation and knowledge management.....
   """
-    
+
     return {
         # "100_chars": prompt_100,
-        # "1000_chars": prompt_1000, 
+        # "1000_chars": prompt_1000,
         "10000_chars": prompt_10000
     }
+
 
 def benchmark_cold_warm(prompt: str, prompt_name: str, warm_iterations: int = 3):
     """Benchmark cold-start vs warm performance."""
     print(f"\n🚀 Cold/Warm Benchmark: {prompt_name} ({len(prompt)} characters)")
     print("=" * 80)
-    
+
     # COLD START - First call after a long period
     print("\n❄️  COLD START (First call)")
     print("-" * 40)
-    
+
     cold_start_time = time.time()
     cold_response = call_model(prompt)
     cold_end_time = time.time()
     cold_duration = cold_end_time - cold_start_time
-    
+
     print(f"⏱️  Cold start duration: {cold_duration:.2f} seconds")
-    print(f"📝 Response length: {len(cold_response) if cold_response else 0} characters")
-    
+    print(
+        f"📝 Response length: {len(cold_response) if cold_response else 0} characters"
+    )
+
     # Wait a bit to simulate real-world scenario
     print("⏳ Waiting 5 seconds before warm calls...")
     time.sleep(5)
-    
+
     # WARM CALLS - Subsequent calls
     print(f"\n🔥 WARM CALLS ({warm_iterations} iterations)")
     print("-" * 40)
-    
+
     warm_times = []
     warm_responses = []
-    
+
     for i in range(warm_iterations):
-        print(f"  Warm call {i+1}/{warm_iterations}...")
-        
+        print(f"  Warm call {i + 1}/{warm_iterations}...")
+
         start_time = time.time()
         response = call_model(prompt)
         end_time = time.time()
-        
+
         duration = end_time - start_time
         warm_times.append(duration)
         warm_responses.append(response)
-        
+
         print(f"    ⏱️  {duration:.2f}s | 📝 {len(response) if response else 0} chars")
-    
+
     # Calculate warm statistics
     if warm_times:
         warm_avg = mean(warm_times)
@@ -321,10 +326,10 @@ def benchmark_cold_warm(prompt: str, prompt_name: str, warm_iterations: int = 3)
         warm_min = min(warm_times)
         warm_max = max(warm_times)
         warm_std = stdev(warm_times) if len(warm_times) > 1 else 0
-        
+
         # Calculate cold start overhead
         cold_overhead = cold_duration - warm_avg
-        
+
         print(f"\n📈 COLD/WARM COMPARISON for {prompt_name}")
         print("=" * 60)
         print(f"Cold start:        {cold_duration:.2f} seconds")
@@ -333,9 +338,11 @@ def benchmark_cold_warm(prompt: str, prompt_name: str, warm_iterations: int = 3)
         print(f"Warm min:          {warm_min:.2f} seconds")
         print(f"Warm max:          {warm_max:.2f} seconds")
         print(f"Warm std dev:      {warm_std:.2f} seconds")
-        print(f"Cold start overhead: {cold_overhead:.2f} seconds ({cold_overhead/warm_avg*100:.1f}% slower)")
-        print(f"Cold start factor:   {cold_duration/warm_avg:.1f}x slower than warm")
-        
+        print(
+            f"Cold start overhead: {cold_overhead:.2f} seconds ({cold_overhead / warm_avg * 100:.1f}% slower)"
+        )
+        print(f"Cold start factor:   {cold_duration / warm_avg:.1f}x slower than warm")
+
         return {
             "prompt_name": prompt_name,
             "prompt_length": len(prompt),
@@ -347,26 +354,27 @@ def benchmark_cold_warm(prompt: str, prompt_name: str, warm_iterations: int = 3)
             "warm_max": warm_max,
             "warm_std": warm_std,
             "cold_overhead": cold_overhead,
-            "cold_factor": cold_duration/warm_avg
+            "cold_factor": cold_duration / warm_avg,
         }
-    
+
     return None
+
 
 def main():
     """Main function to run cold/warm benchmarking."""
-    
+
     # Check if API token is set
-    api_token = os.getenv('REPLICATE_API_TOKEN')
+    api_token = os.getenv("REPLICATE_API_TOKEN")
     if not api_token:
         print("❌ REPLICATE_API_TOKEN not found in environment")
         return
-    
+
     print(f"🔑 API Token found: {api_token[:10]}...")
     print("🤖 Starting Cold/Warm Benchmarking...\n")
-    
+
     # Generate test prompts
     prompts = generate_test_prompts()
-    
+
     # Run benchmarks
     results = []
 
@@ -2204,7 +2212,7 @@ By January 2023, ChatGPT had become the fastest-growing consumer software applic
 """
     response = call_model("Summarize the following text: " + prompt)
     end_time = time.time()
-        
+
     duration = end_time - start_time
     print(f"Cold start duration: {duration:.2f} seconds")
     print("-" * 80)
@@ -2214,28 +2222,29 @@ By January 2023, ChatGPT had become the fastest-growing consumer software applic
     #     result = benchmark_cold_warm(prompt, prompt_name, warm_iterations=3)
     #     if result:
     #         results.append(result)
-    
+
     # # Summary report
     # print("\n" + "="*80)
     # print("📊 COLD/WARM BENCHMARK SUMMARY")
     # print("="*80)
-    
+
     # for result in results:
     #     print(f"\n{result['prompt_name']} ({result['prompt_length']} chars):")
     #     print(f"  Cold: {result['cold_duration']:.2f}s | Warm avg: {result['warm_avg']:.2f}s | Overhead: {result['cold_overhead']:.2f}s ({result['cold_overhead']/result['warm_avg']*100:.1f}%)")
     #     print(f"  Cold is {result['cold_factor']:.1f}x slower than warm")
-    
+
     # # Overall statistics
     # if results:
     #     cold_times = [r['cold_duration'] for r in results]
     #     warm_avgs = [r['warm_avg'] for r in results]
     #     overheads = [r['cold_overhead'] for r in results]
-        
+
     #     print(f"\n📈 OVERALL STATISTICS:")
     #     print(f"  Average cold start: {mean(cold_times):.2f}s")
     #     print(f"  Average warm time:  {mean(warm_avgs):.2f}s")
     #     print(f"  Average overhead:   {mean(overheads):.2f}s")
     #     print(f"  Average cold factor: {mean(cold_times)/mean(warm_avgs):.1f}x")
 
+
 if __name__ == "__main__":
-    main() 
+    main()

@@ -1,13 +1,11 @@
 from dataclasses import dataclass
-from typing import Optional, List
-
-# Import grant models for use in access permissions
-from grants.grant_models import GrantFile
+from typing import Any, Dict, Optional, List
 
 
 @dataclass
 class PersonalServerRequest:
     permission_id: int
+
 
 @dataclass
 class FileMetadata:
@@ -32,3 +30,10 @@ class PermissionData:
     signature: bytes
     is_active: bool
     file_ids: List[int]
+
+@dataclass
+class GrantFile:
+    grantee: str
+    operation: str
+    parameters: Dict[str, Any]
+    expires: Optional[int] = None

@@ -1,13 +1,24 @@
 import requests
 
-# TODO Check file size. For now we will support only files smaller than 1MB due to the limited context window of the LLM
-# This means we should be able to process files in memory
+MAX_FILE_SIZE = 1024 * 1024  # 1MB
+
+
 def download_file(file_url: str):
-    # Convert IPFS URL to HTTP gateway URL if needed
     if file_url.startswith("ipfs://"):
         fetch_url = file_url.replace("ipfs://", "https://ipfs.io/ipfs/")
     else:
         fetch_url = file_url
-    response = requests.get(fetch_url)
-    return response.content
-    
+
+    response = requests.get(fetch_url, stream=True)
+
+    # Check content length if available
+    content_length = response.headers.get("content-length")
+    if content_length and int(content_length) > MAX_FILE_SIZE:
+        raise ValueError(f"File size ({int(content_length)} bytes) exceeds 1MB limit")
+
+    # If no content-length header, check size after downloading
+    content = response.content
+    if len(content) > MAX_FILE_SIZE:
+        raise ValueError(f"File size ({len(content)} bytes) exceeds 1MB limit")
+
+    return content
