@@ -9,6 +9,7 @@ from grants.grant_models import GrantFile
 class PersonalServerRequest:
     permission_id: int
 
+
 @dataclass
 class FileMetadata:
     file_id: int

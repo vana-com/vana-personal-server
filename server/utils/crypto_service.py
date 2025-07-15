@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class CryptoKeys(NamedTuple):
     """Simple container for derived cryptographic keys."""
+
     private_key_hex: str
     public_key_hex: str
     address: str
@@ -21,6 +22,7 @@ class CryptoKeys(NamedTuple):
 
 class KeyDerivationError(Exception):
     """Exception raised when key derivation fails."""
+
     def __init__(self, message: str, details: dict = None):
         self.message = message
         self.details = details or {}
@@ -36,25 +38,26 @@ class CryptoService:
         """Initialize the crypto service."""
         pass
 
-    def derive_ethereum_keys(self, mnemonic: str, index: int, language_str: str = "english") -> CryptoKeys:
+    def derive_ethereum_keys(
+        self, mnemonic: str, index: int, language_str: str = "english"
+    ) -> CryptoKeys:
         """
         Derive Ethereum keys for DLP using BIP44 standard.
-        
+
         Args:
             mnemonic: BIP39 mnemonic phrase
             index: Address index to derive
             language_str: Mnemonic language (not used with hdwallet)
-            
+
         Returns:
             CryptoKeys with derived keys
-            
+
         Raises:
             KeyDerivationError: If key derivation fails
         """
         if index < 0:
             raise KeyDerivationError(
-                "Address index cannot be negative",
-                details={"index": index}
+                "Address index cannot be negative", details={"index": index}
             )
 
         try:
@@ -75,10 +78,14 @@ class CryptoService:
                 private_key_hex=private_key_hex,
                 public_key_hex=public_key_hex,
                 address=address,
-                derivation_index=index
+                derivation_index=index,
             )
         except Exception as e:
             raise KeyDerivationError(
                 f"Failed to derive Ethereum keys: {e}",
-                details={"index": index, "language": language_str, "underlying_error": str(e)}
-            ) 
+                details={
+                    "index": index,
+                    "language": language_str,
+                    "underlying_error": str(e),
+                },
+            )

@@ -1,5 +1,6 @@
 import replicate
 
+
 class Llm:
     def __init__(self, client: replicate.Client):
         self.client = client

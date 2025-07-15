@@ -22,7 +22,9 @@ class DataPermissions:
             address=self.data_permissions_address, abi=self.data_permissions_abi
         )
 
-    def fetch_permission_from_blockchain(self, permission_id: int) -> Optional[PermissionData]:
+    def fetch_permission_from_blockchain(
+        self, permission_id: int
+    ) -> Optional[PermissionData]:
         """Fetch permission data from the PermissionRegistry contract"""
         try:
             if not self.web3.is_connected():
