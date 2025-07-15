@@ -16,7 +16,7 @@ from llm.llm import Llm
 from entities import FileMetadata
 from onchain.chain import MOKSHA
 from onchain.data_permissions import PermissionData
-from grants.grant_models import GrantFile
+from entities import GrantFile
 from unittest.mock import patch, Mock
 
 load_dotenv()
@@ -53,17 +53,17 @@ def test_ecies_decryption():
 
 
 @patch("server.download_file", return_value=b"test_file_content")
-@patch("server.decrypt_with_wallet_private_key", return_value="test_symmetric_key")
+@patch("server.decrypt_with_private_key", return_value="test_symmetric_key")
 @patch("server.decrypt_user_data", return_value=b"decrypted_file_content")
 @patch("onchain.data_permissions.DataPermissions.fetch_permission_from_blockchain")
-@patch("server.fetch_grant")
+@patch("server.fetch_raw_grant_file")
 @patch("onchain.data_registry.DataRegistry.fetch_file_metadata")
 def test_personal_server(
     mock_file_metadata,
-    mock_fetch_grant,
+    mock_fetch_raw_grant_file,
     mock_fetch_permission,
     mock_decrypt_user_data,
-    mock_decrypt_with_wallet_private_key,
+    mock_decrypt_with_private_key,
     mock_download_file,
 ):
     """Test the full personal server flow with mocked blockchain interactions"""
@@ -102,12 +102,12 @@ def test_personal_server(
         )
         mock_fetch_permission.return_value = mock_permission_data
 
-        mock_grant_data = GrantFile(
-            grantee="0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4",
-            operation="llm_inference",
-            parameters={"prompt": "Analyze this data: {{data}}"},
-        )
-        mock_fetch_grant.return_value = mock_grant_data
+        mock_grant_data = {
+            "grantee": "0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4",
+            "operation": "llm_inference",
+            "parameters": {"prompt": "Analyze this data: {{data}}"},
+        }
+        mock_fetch_raw_grant_file.return_value = mock_grant_data
 
         mock_file_metadata = FileMetadata(
             file_id=999,

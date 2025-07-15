@@ -303,7 +303,7 @@ def test_real_personal_server_flow():
         encrypted_symmetric_key_hex = "00" * 32
         # Patch decrypt_with_wallet_private_key to just return the symmetric key as hex
         ecies_decrypt_patch = patch(
-            "server.decrypt_with_wallet_private_key", return_value=symmetric_key.hex()
+            "server.decrypt_with_private_key", return_value=symmetric_key.hex()
         )
 
     # Prepare request JSON and signature

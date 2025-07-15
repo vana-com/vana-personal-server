@@ -1,11 +1,8 @@
 import json
 import logging
-import time
-from typing import Optional, List
+from typing import Any, Optional
 import requests
 from requests.exceptions import RequestException, Timeout
-
-from .grant_models import GrantFile, validate_grant_file_structure
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +15,7 @@ class NetworkError(Exception):
         self.original_error = original_error
 
 
-def retrieve_grant_file(grant_url: str, timeout: int = 10) -> GrantFile:
+def fetch_raw_grant_file(grant_url: str, timeout: int = 10) -> Any:
     """
     Retrieves a grant file from IPFS.
 
@@ -27,7 +24,7 @@ def retrieve_grant_file(grant_url: str, timeout: int = 10) -> GrantFile:
         timeout: Request timeout in seconds
 
     Returns:
-        GrantFile object
+        Raw grant file data
 
     Raises:
         NetworkError: When all gateways fail to retrieve the file
@@ -50,29 +47,18 @@ def retrieve_grant_file(grant_url: str, timeout: int = 10) -> GrantFile:
 
         for gateway_url in gateways:
             try:
-                logger.debug(f"Trying gateway: {gateway_url}")
+                logger.info(f"Trying gateway: {gateway_url}")
                 response = requests.get(gateway_url, timeout=timeout)
 
                 if response.status_code == 200:
                     try:
-                        grant_data = response.json()
-
-                        if validate_grant_file_structure(grant_data):
-                            return GrantFile(
-                                grantee=grant_data["grantee"],
-                                operation=grant_data["operation"],
-                                parameters=grant_data["parameters"],
-                                expires=grant_data.get("expires"),
-                            )
-                        else:
-                            logger.warning(
-                                f"Invalid grant file structure from {gateway_url}"
-                            )
-                            continue
-
+                        return response.json()
                     except json.JSONDecodeError as e:
                         logger.warning(f"Invalid JSON from {gateway_url}: {e}")
                         continue
+                else:
+                    logger.warning(f"Failed to retrieve grant file from {gateway_url}")
+                    continue
 
             except (RequestException, Timeout) as e:
                 logger.warning(f"Gateway {gateway_url} failed: {e}")
@@ -87,37 +73,3 @@ def retrieve_grant_file(grant_url: str, timeout: int = 10) -> GrantFile:
             raise
         raise NetworkError(f"Error retrieving grant file: {str(e)}", e)
 
-
-def is_grant_expired(grant_file: GrantFile) -> bool:
-    """
-    Utility to check if a grant has expired
-
-    Args:
-        grant_file: The grant file to check
-
-    Returns:
-        True if the grant has expired, False otherwise
-    """
-    if not grant_file.expires:
-        return False  # No expiration set
-
-    current_time = int(time.time())
-    return current_time > grant_file.expires
-
-
-def get_grant_time_remaining(grant_file: GrantFile) -> Optional[int]:
-    """
-    Utility to get the time remaining before grant expires (in seconds)
-
-    Args:
-        grant_file: The grant file to check
-
-    Returns:
-        Seconds remaining before expiration, or None if no expiration set
-    """
-    if not grant_file.expires:
-        return None  # No expiration set
-
-    current_time = int(time.time())
-    remaining = grant_file.expires - current_time
-    return max(0, remaining)

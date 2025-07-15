@@ -8,17 +8,16 @@ logger = logging.getLogger(__name__)
 import json
 
 import web3
-from entities import FileMetadata, PermissionData, PersonalServerRequest
+from entities import FileMetadata, GrantFile, PersonalServerRequest
 from eth_account.messages import encode_defunct
-from files import decrypt_user_data, decrypt_with_wallet_private_key, download_file
-from grants.fetch_grant import fetch_grant
+from files import decrypt_user_data, decrypt_with_private_key, download_file
 from llm.llm import Llm
 from onchain.data_permissions import DataPermissions
 from onchain.data_registry import DataRegistry
 from utils.identity_server import IdentityServer
-from grants.grant_models import GrantFile
+from grants.fetch import fetch_raw_grant_file
+from grants.validate import validate
 
-LLM_INFERENCE_OPERATION = "llm_inference"
 PROMPT_DATA_SEPARATOR = "-----" * 80 + "\n"
 
 
@@ -51,17 +50,11 @@ class Server:
         if not permission.file_ids or len(permission.file_ids) == 0:
             raise ValueError("No file IDs found in permission")
 
-        grant_file = fetch_grant(permission.grant)
-        if not grant_file:
+        raw_grant_file = fetch_raw_grant_file(permission.grant)
+        if not raw_grant_file:
             raise ValueError(f"Grant data not found or invalid at {permission.grant}")
 
-        if grant_file.operation != LLM_INFERENCE_OPERATION:
-            raise ValueError("Only LLM inference is supported")
-
-        if grant_file.grantee != app_address:
-            raise ValueError(
-                "App address does not match the app address in the access permissions"
-            )
+        grant_file = validate(raw_grant_file, app_address)
 
         logger.info(f"App {app_address} has access to execute the request: {request}")
 
@@ -107,7 +100,7 @@ class Server:
         for file_metadata in files_metadata:
             encrypted_file_content = download_file(file_metadata.public_url)
             logger.info(f"Fetched file content from {file_metadata.public_url}")
-            decrypted_encryption_key = decrypt_with_wallet_private_key(
+            decrypted_encryption_key = decrypt_with_private_key(
                 file_metadata.encrypted_key, server_private_key
             )
             decrypted_file_content_bytes = decrypt_user_data(

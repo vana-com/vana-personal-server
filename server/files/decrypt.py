@@ -30,7 +30,7 @@ def decrypt(encryption_key: str, content: str) -> str:
         raise ValueError(f"Failed to decrypt file content: {str(e)}")
 
 
-def decrypt_with_wallet_private_key(encrypted_data: str, private_key: str) -> str:
+def decrypt_with_private_key(encrypted_data: str, private_key: str) -> str:
     """
     Decrypt data with a wallet private key using eccrypto-compatible format.
 
