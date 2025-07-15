@@ -36,9 +36,8 @@ class Server:
             raise ValueError("Valid permission ID is required")
 
         app_address = self.recover_app_address(request_json, signature)
-        print(f"App address: {app_address}")
+        logger.info(f"Recovered app address: {app_address}")
         
-        # Fetch permission from blockchain
         permission = self.data_permissions.fetch_permission_from_blockchain(request.permission_id)
         if not permission:
             raise ValueError(f"Permission {request.permission_id} not found on blockchain")
@@ -58,12 +57,11 @@ class Server:
 
         logger.info(f"App {app_address} has access to execute the request: {request}")
 
-        # Derive the personal server private key based on user address
         user_server_keys = self.identity_server.derive_user_server_address(permission.grantor)
         personal_server_private_key = user_server_keys["private_key"]
         personal_server_address = user_server_keys["address"]
 
-        print(f"Derived server address: {personal_server_address}")
+        logger.info(f"Derived server address: {personal_server_address}")
 
         files_metadata = []
         for file_id in permission.file_ids:
@@ -80,15 +78,11 @@ class Server:
         files_content = []
         for file_metadata in files_metadata:
             encrypted_file_content = download_file(file_metadata.public_url)
-            print(f"Fetched file content from {file_metadata.public_url}")
-            # Decrypt file_metadata.encrypted_key with personal_server_private_key using ECIES
+            logger.info(f"Fetched file content from {file_metadata.public_url}")
             decrypted_encryption_key = decrypt_with_wallet_private_key(file_metadata.encrypted_key, personal_server_private_key)
-            print(f"Decrypted key: {decrypted_encryption_key}")
 
-            # Decrypt actual file content with the decrypted key
             decrypted_file_content_bytes = decrypt_user_data(encrypted_file_content, decrypted_encryption_key)
             decrypted_file_content = decrypted_file_content_bytes.decode('utf-8')
-            print(f"Decrypted file content: {decrypted_file_content}")
             files_content.append(decrypted_file_content)
 
         # Get the prompt template from access permissions parameters
