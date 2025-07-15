@@ -6,8 +6,17 @@ from eth_account.messages import encode_defunct
 from web3 import Web3
 from ecies import decrypt as ecies_decrypt
 
-from personal_server import PersonalServer
-from llm import Llm
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from server import Server
+from llm.llm import Llm
+from entities import FileMetadata
+from onchain.chain import MOKSHA
+from onchain.data_permissions import PermissionData
+from grants.grant_models import GrantFile
+from unittest.mock import patch, Mock
 
 load_dotenv()
 
@@ -36,14 +45,20 @@ def test_ecies_decryption():
         print(f"❌ ECIES decryption failed: {e}")
         return False
 
-def test_personal_server():
-    """Test the full personal server flow with new permission_id structure"""
+@patch('server.download_file', return_value=b"test_file_content")
+@patch('server.decrypt_with_wallet_private_key', return_value="test_symmetric_key")
+@patch('server.decrypt_user_data', return_value=b"decrypted_file_content")
+@patch('onchain.data_permissions.DataPermissions.fetch_permission_from_blockchain')
+@patch('server.fetch_grant')
+@patch('onchain.data_registry.DataRegistry.fetch_file_metadata')
+def test_personal_server(mock_file_metadata, mock_fetch_grant, mock_fetch_permission, mock_decrypt_user_data, mock_decrypt_with_wallet_private_key, mock_download_file):
+    """Test the full personal server flow with mocked blockchain interactions"""
     print("\nTesting full personal server flow...")
     
     web3 = Web3()
 
     # Test data with new structure - using permission_id
-    request = '{"user_address": "0xd7Ae9319049f0B6cA9AD044b165c5B4F143EF451", "permission_id": 6}'
+    request = '{"permission_id": 6}'
     message_hash = encode_defunct(text=request)
 
     # Use a test private key for signing
@@ -57,13 +72,41 @@ def test_personal_server():
         dummy_llm = Llm(client=None)
         dummy_llm.run = lambda prompt: "Processed prompt: " + prompt
         
-        personal_server = PersonalServer(llm=dummy_llm)
+        # Mock blockchain interactions
+        mock_permission_data = PermissionData(
+            id=6,
+            grantor="0x1234567890123456789012345678901234567890",
+            nonce=1,
+            grant="ipfs://QmTestGrantData",
+            signature=b"test_signature",
+            is_active=True,
+            file_ids=[999]
+        )
+        mock_fetch_permission.return_value = mock_permission_data
         
+        mock_grant_data = GrantFile(
+            grantee="0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4",
+            operation="llm_inference",
+            parameters={
+                "prompt": "Analyze this data: {{data}}"
+            }
+        )
+        mock_fetch_grant.return_value = mock_grant_data
+        
+        mock_file_metadata = FileMetadata(
+            file_id=999,
+            owner_address="0xd7Ae9319049f0B6cA9AD044b165c5B4F143EF451",
+            public_url="ipfs://QmTestFile",
+            encrypted_key="test_encrypted_key"
+        )
+        mock_file_metadata.return_value = mock_file_metadata
+        
+        personal_server = Server(llm=dummy_llm, chain=MOKSHA)
         output = personal_server.execute(request, signature.signature)
         print(f"✅ Personal server executed successfully")
         print(f"Output: {output}")
         return True
-        
+    
     except Exception as e:
         print(f"❌ Personal server test failed: {e}")
         print(f"Error details: {type(e).__name__}: {str(e)}")

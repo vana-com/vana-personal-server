@@ -8,3 +8,7 @@ __pycache__/
 *.pyd
 .cog/
 server/.cog/
+
+# IDE and AI assistant files
+.idea/
+server/.claude/

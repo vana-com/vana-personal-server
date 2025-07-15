@@ -1,29 +1,32 @@
 import logging
 import os
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 logger = logging.getLogger(__name__)
 import json
 
 import web3
+from entities import PermissionData, PersonalServerRequest
 from eth_account.messages import encode_defunct
-from files import decrypt_with_wallet_private_key, decrypt_user_data
-
-from entities import AccessPermissionsResponse, PersonalServerRequest
+from files import decrypt_user_data, decrypt_with_wallet_private_key, download_file
+from grants.fetch_grant import fetch_grant
+from llm.llm import Llm
+from onchain.data_permissions import DataPermissions
 from onchain.data_registry import DataRegistry
-from onchain.access_permissions import AccessPermissions
-from llm import Llm
-from files import download_file
-from identity_server import IdentityServer
+from utils.identity_server import IdentityServer
 
 LLM_INFERENCE_OPERATION = "llm_inference"
 PROMPT_DATA_SEPARATOR = ("-----"*80 + "\n")
 
-class PersonalServer:
-    def __init__(self, llm: Llm):
+class Server:
+    def __init__(self, llm: Llm, chain):
         self.llm = llm
-        self.data_registry = DataRegistry()
-        self.web3 = web3.Web3()
-        self.access_permissions = AccessPermissions()
+        self.chain = chain
+        self.web3 = web3.Web3(web3.HTTPProvider(chain.url))
+        self.data_registry = DataRegistry(chain, self.web3)
+        self.data_permissions = DataPermissions(chain, self.web3)
         self.identity_server = IdentityServer()
 
     def execute(self, request_json: str, signature: str):
@@ -35,27 +38,35 @@ class PersonalServer:
         app_address = self.recover_app_address(request_json, signature)
         print(f"App address: {app_address}")
         
-        # Fetch access permissions from blockchain using permission_id
-        access_permissions = self.fetch_access_permissions(app_address, request)
-        print(f"Access permissions: {access_permissions}")
-
-        if access_permissions.operation != LLM_INFERENCE_OPERATION:
-            raise ValueError("Only LLM inference is supported")
-
-        if not access_permissions.file_ids or len(access_permissions.file_ids) == 0:
+        # Fetch permission from blockchain
+        permission = self.data_permissions.fetch_permission_from_blockchain(request.permission_id)
+        if not permission:
+            raise ValueError(f"Permission {request.permission_id} not found on blockchain")
+        
+        if not permission.file_ids or len(permission.file_ids) == 0:
             raise ValueError("No file IDs found in permission")
+        
+        grant_file = fetch_grant(permission.grant)
+        if not grant_file:
+            raise ValueError(f"Grant data not found or invalid at {permission.grant}")
+        
+        if grant_file.operation != LLM_INFERENCE_OPERATION:
+            raise ValueError("Only LLM inference is supported")
+        
+        if grant_file.grantee != app_address:
+            raise ValueError("App address does not match the app address in the access permissions")
 
         logger.info(f"App {app_address} has access to execute the request: {request}")
 
         # Derive the personal server private key based on user address
-        user_server_keys = self.identity_server.derive_user_server_address(request.user_address)
+        user_server_keys = self.identity_server.derive_user_server_address(permission.grantor)
         personal_server_private_key = user_server_keys["private_key"]
         personal_server_address = user_server_keys["address"]
 
         print(f"Derived server address: {personal_server_address}")
 
         files_metadata = []
-        for file_id in access_permissions.file_ids:
+        for file_id in permission.file_ids:
             file_metadata = self.data_registry.fetch_file_metadata(file_id, personal_server_address)
 
             if not file_metadata:
@@ -81,7 +92,7 @@ class PersonalServer:
             files_content.append(decrypted_file_content)
 
         # Get the prompt template from access permissions parameters
-        prompt_template = access_permissions.parameters.get("prompt", "")
+        prompt_template = grant_file.parameters.get("prompt", "")
         if not prompt_template:
             raise ValueError("Prompt template is required in permission parameters")
         
@@ -91,9 +102,6 @@ class PersonalServer:
     def recover_app_address(self, request_json: str, signature: str):
         message = encode_defunct(text=request_json)
         return self.web3.eth.account.recover_message(message, signature=signature)
-    
-    def fetch_access_permissions(self, app_address: str, request: PersonalServerRequest) -> AccessPermissionsResponse:
-        return self.access_permissions.fetch_access_permissions(app_address, request)
     
     def build_prompt(self, prompt_template: str, files_content: list[str]):
         concatenated_data = "\n" + PROMPT_DATA_SEPARATOR.join(files_content) + "\n" + PROMPT_DATA_SEPARATOR

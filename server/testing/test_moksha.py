@@ -16,8 +16,8 @@ sys.modules['pgpy.pgp'] = MagicMock()
 # Add the server directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from personal_server import PersonalServer
-from entities import PersonalServerRequest, AccessPermissionsResponse, FileMetadata
+from server import Server
+from entities import PersonalServerRequest, FileMetadata
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 from identity.identity_server import IdentityServer
 
@@ -100,7 +100,6 @@ def test_comprehensive_personal_server():
         # Step 5: Prepare correct request JSON
         print("\n5️⃣ Preparing request JSON...")
         request_data = {
-            "user_address": user_address,
             "permission_id": permission_id
         }
         request_json = json.dumps(request_data)
@@ -123,8 +122,8 @@ def test_comprehensive_personal_server():
         print("\n7️⃣ Testing personal server flow with minimal mocking...")
         
         # Mock only the problematic dependencies
-        with patch('personal_server.download_file', return_value=encrypted_file_content.encode()):
-            with patch('personal_server.decrypt_user_data', return_value=test_file_content.encode()):
+        with patch('server.download_file', return_value=encrypted_file_content.encode()):
+            with patch('server.decrypt_user_data', return_value=test_file_content.encode()):
                 # Test the key derivation and encryption flow
                 print("✅ File download and decryption mocked successfully")
                 
@@ -158,13 +157,10 @@ def test_comprehensive_personal_server():
         print("\n9️⃣ Testing request JSON structure...")
         parsed_request = json.loads(request_json)
         
-        required_fields = ["user_address", "permission_id"]
+        required_fields = ["permission_id"]
         for field in required_fields:
             if field not in parsed_request:
                 raise ValueError(f"❌ Missing required field: {field}")
-        
-        if parsed_request["user_address"] != user_address:
-            raise ValueError("❌ User address mismatch")
         
         if parsed_request["permission_id"] != permission_id:
             raise ValueError("❌ Permission ID mismatch")
@@ -242,9 +238,9 @@ def test_ecies_encryption_decryption():
 
 def test_real_personal_server_flow():
     """
-    Test the real PersonalServer.execute logic with only external dependencies mocked.
+    Test the real Server.execute logic with only external dependencies mocked.
     """
-    print("\n==================== Real PersonalServer Flow ====================\n")
+    print("\n==================== Real Server Flow ====================\n")
     user_address = "0xd7Ae9319049f0B6cA9AD044b165c5B4F143EF451"
     permission_id = 6
     file_id = 999
@@ -255,16 +251,16 @@ def test_real_personal_server_flow():
     # Derive keys
     identity_server = IdentityServer()
     user_server_keys = identity_server.derive_user_server_address(user_address)
-    personal_server_private_key = user_server_keys["private_key"]
-    personal_server_public_key = user_server_keys["public_key"]
-    personal_server_address = user_server_keys["address"]
+    server_private_key = user_server_keys["private_key"]
+    server_public_key = user_server_keys["public_key"]
+    server_address = user_server_keys["address"]
 
     # ECIES encrypt the symmetric key for the server
     try:
         from eciespy import encrypt, decrypt as ecies_decrypt
-        personal_server_eth_key = keys.PrivateKey(bytes.fromhex(personal_server_private_key))
-        personal_server_public_key_obj = personal_server_eth_key.public_key
-        encrypted_symmetric_key = encrypt(personal_server_public_key_obj.to_hex(), symmetric_key)
+        server_eth_key = keys.PrivateKey(bytes.fromhex(server_private_key))
+        server_public_key_obj = server_eth_key.public_key
+        encrypted_symmetric_key = encrypt(server_public_key_obj.to_hex(), symmetric_key)
         encrypted_symmetric_key_hex = encrypted_symmetric_key.hex()
         print("✅ Using real ECIES encryption")
         ecies_decrypt_patch = None
@@ -273,11 +269,10 @@ def test_real_personal_server_flow():
         # Use a valid hex string (32 bytes)
         encrypted_symmetric_key_hex = "00" * 32
         # Patch decrypt_with_wallet_private_key to just return the symmetric key as hex
-        ecies_decrypt_patch = patch("personal_server.decrypt_with_wallet_private_key", return_value=symmetric_key.hex())
+        ecies_decrypt_patch = patch("server.decrypt_with_wallet_private_key", return_value=symmetric_key.hex())
 
     # Prepare request JSON and signature
     request_data = {
-        "user_address": user_address,
         "permission_id": permission_id
     }
     request_json = json.dumps(request_data)
@@ -303,8 +298,8 @@ def test_real_personal_server_flow():
     
     # Patch only the external dependencies (but not contract integrations or decrypt)
     context_managers = [
-        patch("personal_server.download_file", return_value=b"ENCRYPTED_CONTENT"),
-        patch("personal_server.decrypt_user_data", return_value=test_file_content.encode()),
+        patch("server.download_file", return_value=b"ENCRYPTED_CONTENT"),
+        patch("server.decrypt_user_data", return_value=test_file_content.encode()),
         patch.object(DataRegistry, "fetch_file_metadata", return_value=mock_file_metadata)
     ]
     if ecies_decrypt_patch:
@@ -319,9 +314,10 @@ def test_real_personal_server_flow():
         mock_llm.run = Mock(return_value="LLM OUTPUT: " + test_file_content)
         
         # Create the real PersonalServer instance
-        server = PersonalServer(llm=mock_llm)
+        from onchain.chain import MOKSHA
+        server = Server(llm=mock_llm, chain=MOKSHA)
         output = server.execute(request_json, signature.signature)
-        print(f"✅ PersonalServer.execute output: {output}")
+        print(f"✅ Server.execute output: {output}")
         assert output == "LLM OUTPUT: " + test_file_content
         print("✅ Real PersonalServer flow test passed!")
         return True
