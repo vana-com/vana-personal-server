@@ -34,8 +34,3 @@ class OperationCreated:
 class PersonalServer:
     address: str
     public_key: str
-
-@dataclass
-class IdentityResponse:
-    user_address: str
-    personal_server: PersonalServer

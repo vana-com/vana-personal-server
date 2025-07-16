@@ -3,11 +3,6 @@ from typing import Any, Dict, Optional, List
 
 
 @dataclass
-class PersonalServerRequest:
-    permission_id: int
-
-
-@dataclass
 class FileMetadata:
     file_id: int
     owner_address: str
