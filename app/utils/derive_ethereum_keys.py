@@ -58,7 +58,7 @@ def derive_ethereum_keys(
         derivation_path = f"m/44'/60'/0'/0/{index}"
 
         # Generate account from mnemonic and derivation path
-        acct = Account.from_mnemonic(mnemonic, passphrase="", account_path=derivation_path, language=language_str)
+        acct = Account.from_mnemonic(mnemonic, account_path=derivation_path)
 
         private_key_hex = acct.key.hex()
         public_key_hex = acct._key_obj.public_key.to_hex()
