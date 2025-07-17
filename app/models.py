@@ -26,16 +26,9 @@ class IdentityResponseModel(BaseModel):
     user_address: EthereumAddress
     personal_server: PersonalServerModel
 
-class OperationModel(BaseModel):
-    permission_id: int = Field(gt=0)
-
 class CreateOperationRequest(BaseModel):
     app_signature: str
-    operation: OperationModel
-
-class OperationLinks(BaseModel):
-    get: str
-    cancel: str
+    operation_request_json: str
 
 class CreateOperationResponse(BaseModel):
     id: str

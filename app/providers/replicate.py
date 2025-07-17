@@ -59,15 +59,17 @@ class ReplicateProvider(BaseProvider):
             "Content-Type": "application/json"
         }
 
-    def create_prediction(self, signature: str, operation: Dict[str, Any]) -> ReplicatePredictionResponse:
+    def create_prediction(self, signature: str, operation_request_json: str) -> ReplicatePredictionResponse:
         """Create a new prediction on Replicate."""
         try:
+            logger.info(f"Replicate create prediction with signature: {signature} and operation_request_json: {operation_request_json}")
+
             replicate_request = ReplicateRequest(
                 version=settings.SERVER_MODEL_VERSION,
                 input=ReplicateInput(
                     replicate_api_token=settings.REPLICATE_API_TOKEN,
                     signature=signature,
-                    request_json=json.dumps(operation)
+                    request_json=operation_request_json
                 )
             )
 

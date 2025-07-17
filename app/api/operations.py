@@ -12,7 +12,7 @@ async def create_operation(request: CreateOperationRequest) -> CreateOperationRe
     try:
         prediction: ReplicatePredictionResponse = replicate_provider.create_prediction(
             signature=request.app_signature,
-            operation={"permission_id": request.operation.permission_id},
+            operation=request.operation_request_json,
         )
 
         response = CreateOperationResponse(
