@@ -12,6 +12,7 @@ from services.operations import OperationsService
 from services.identity import IdentityService
 from onchain.chain import Chain, MOKSHA
 from settings import Settings, get_settings
+from utils.ipfs import test_gateway_availability
 
 
 # Settings dependency
@@ -50,9 +51,16 @@ def get_identity_service() -> IdentityService:
     return IdentityService()
 
 
+# IPFS health check dependency
+def check_ipfs_health() -> dict:
+    """Check IPFS gateway availability for monitoring."""
+    return test_gateway_availability(timeout=3)
+
+
 # Type aliases for dependency injection
 SettingsDep = Annotated[Settings, Depends(get_settings_dependency)]
 ComputeDep = Annotated[BaseCompute, Depends(get_compute_provider)]
 ChainDep = Annotated[Chain, Depends(get_chain)]
 OperationsServiceDep = Annotated[OperationsService, Depends(get_operations_service)]
 IdentityServiceDep = Annotated[IdentityService, Depends(get_identity_service)]
+IPFSHealthDep = Annotated[dict, Depends(check_ipfs_health)]
