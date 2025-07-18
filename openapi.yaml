@@ -1,0 +1,207 @@
+openapi: 3.0.3
+info:
+  title: Vana Personal-Server API
+  version: "0.1.0"
+  description: |
+    A user-scoped compute service that executes permissioned operations
+    (LLM inference, vector search, decryption, …) on private data.
+    The contract is provider-agnostic, uses a clear /operations resource
+    model, and defines a single streaming media-type (Server-Sent Events).
+
+servers:
+  - url: https://server.vana.com/api/v1
+
+# ───────────────────────────────────────────────────────────────────────────
+components:
+  schemas:
+    EthereumAddress:
+      type: string
+      description: EIP-55 checksum address, 20 bytes, 0x-prefixed.
+      pattern: '^0x[a-fA-F0-9]{40}$'
+      example: '0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4'
+
+    PublicKey:
+      type: string
+      description: Uncompressed secp256k1 public key, 128 hex characters.
+      pattern: '^0x[a-fA-F0-9]{128}$'
+      example: '0x04bcdf3e…'
+
+    CreateOperationRequest:
+      type: object
+      required: [app_signature, operation_request_json]
+      properties:
+        app_signature:
+          type: string
+          description: The signature over the operation_request_json
+          example: "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+        operation_request_json:
+          type: string
+          description: The request JSON which contains permission_id
+          example: "{\"permission_id\": 1024}"
+
+    CreateOperationResponse:
+      type: object
+      required: [id, created_at]
+      properties:
+        id:
+          type: string
+          description: The operation ID for tracking the computation
+          example: "test-prediction-id-123"
+        created_at:
+          type: string
+          format: date-time
+          description: The timestamp when the operation was created
+          example: "2024-01-01T00:00:00Z"
+
+    GetOperationResponse:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          description: The operation ID
+          example: "test-prediction-id-123"
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed, cancelled]
+          description: The status of the operation
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional timestamp when the operation started
+          example: "2024-01-01T00:00:00Z"
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional timestamp when the operation finished
+          example: "2024-01-01T00:00:00Z"
+        result:
+          type: string
+          nullable: true
+          description: Optional result data if operation completed successfully
+
+    PersonalServerModel:
+      type: object
+      required: [address, public_key]
+      properties:
+        address:
+          $ref: '#/components/schemas/EthereumAddress'
+        public_key:
+          $ref: '#/components/schemas/PublicKey'
+
+    IdentityResponseModel:
+      type: object
+      required: [user_address, personal_server]
+      properties:
+        user_address:
+          $ref: '#/components/schemas/EthereumAddress'
+        personal_server:
+          $ref: '#/components/schemas/PersonalServerModel'
+
+    ErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          description: Error message
+          example: "Operation not found"
+
+  parameters:
+    OpId:
+      name: operation_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The operation ID
+
+# ───────────────────────────────────────────────────────────────────────────
+paths:
+  /operations:
+    post:
+      summary: Start an operation (asynchronous)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOperationRequest' }
+      responses:
+        "202":
+          description: Accepted — operation handle returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateOperationResponse' }
+        "500":
+          description: Server error during operation processing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /operations/{operation_id}:
+    parameters: [ { $ref: '#/components/parameters/OpId' } ]
+
+    get:
+      summary: Poll operation status / result
+      responses:
+        "200":
+          description: Operation status retrieved successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GetOperationResponse' }
+        "404":
+          description: Operation not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /operations/cancel:
+    post:
+      summary: Cancel a running operation (alternative endpoint)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation_id]
+              properties:
+                operation_id:
+                  type: string
+                  description: The operation ID to cancel
+      responses:
+        "204":
+          description: Operation cancelled or already finished
+        "404":
+          description: Operation not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /identity:
+    get:
+      summary: Derive deterministic server identity for a user
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/EthereumAddress' }
+          description: Caller's wallet address (EIP-55).
+      responses:
+        "200":
+          description: Server identity retrieved successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentityResponseModel' }
+        "400":
+          description: Invalid address
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
