@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 from app import app
-from domain import PersonalServer
+from domain.value_objects import PersonalServer
 
 # Create test client for the full app
 client = TestClient(app)

@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 from api.operations import router
-from models import CreateOperationRequest, GetOperationResponse
+from api.schemas import CreateOperationRequest, GetOperationResponse
 from compute.replicate import ReplicatePredictionResponse
 
 # Create test client

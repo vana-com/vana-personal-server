@@ -3,9 +3,10 @@ import logging
 
 import web3
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
-from domain import FileMetadata, PersonalServerRequest
+from domain.entities import FileMetadata
+from domain.value_objects import PersonalServerRequest
 from eth_account.messages import encode_defunct
-from exceptions import (
+from domain.exceptions import (
     AuthenticationError,
     BlockchainError,
     ComputeError,
@@ -165,8 +166,8 @@ class OperationsService:
                 logger.info(
                     f"Fetched file content from {file_metadata.public_url}. File size: {len(encrypted_file_content)} bytes"
                 )
-                logger.info(f"Encrypted key: {file_metadata.encrypted_key}")
-                logger.info(f"Server private key: {server_private_key}")
+                logger.debug(f"Processing encrypted key for file {file_metadata.file_id}")
+                logger.debug(f"Using server private key for decryption")
 
                 decrypted_encryption_key = decrypt_with_private_key(
                     file_metadata.encrypted_key, server_private_key

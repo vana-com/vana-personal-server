@@ -1,13 +1,11 @@
 from fastapi import APIRouter, HTTPException
-from models import CreateOperationRequest, CreateOperationResponse, GetOperationResponse, ErrorResponse
+from api.schemas import CreateOperationRequest, CreateOperationResponse, GetOperationResponse, ErrorResponse
 from services.operations import OperationsService
-from compute.replicate import ReplicateLlmInference, ReplicatePredictionResponse
-from onchain.chain import MOKSHA
-from exceptions import VanaAPIError
+from domain.exceptions import VanaAPIError
 from compute.base import ExecuteResponse, GetResponse
+from dependencies import OperationsServiceDep
 
 router = APIRouter()
-operations_service = OperationsService(ReplicateLlmInference(), MOKSHA)
 
 @router.post("/operations", status_code=202, responses={
     400: {"model": ErrorResponse, "description": "Validation error"},
@@ -16,7 +14,10 @@ operations_service = OperationsService(ReplicateLlmInference(), MOKSHA)
     404: {"model": ErrorResponse, "description": "Resource not found"},
     500: {"model": ErrorResponse, "description": "Server error"}
 })
-async def create_operation(request: CreateOperationRequest) -> CreateOperationResponse:
+async def create_operation(
+    request: CreateOperationRequest,
+    operations_service: OperationsServiceDep
+) -> CreateOperationResponse:
     try:
         prediction: ExecuteResponse = operations_service.create(
             request_json=request.operation_request_json,
@@ -48,7 +49,10 @@ async def create_operation(request: CreateOperationRequest) -> CreateOperationRe
     404: {"model": ErrorResponse, "description": "Operation not found"},
     500: {"model": ErrorResponse, "description": "Server error"}
 })
-async def get_operation(operation_id: str) -> GetOperationResponse:
+async def get_operation(
+    operation_id: str,
+    operations_service: OperationsServiceDep
+) -> GetOperationResponse:
     try:
         prediction: GetResponse = operations_service.get(
             operation_id
@@ -83,7 +87,10 @@ async def get_operation(operation_id: str) -> GetOperationResponse:
     404: {"model": ErrorResponse, "description": "Operation not found"},
     500: {"model": ErrorResponse, "description": "Server error"}
 })
-async def cancel_operation(operation_id: str):
+async def cancel_operation(
+    operation_id: str,
+    operations_service: OperationsServiceDep
+):
     try:
         success = operations_service.cancel(operation_id)
         if not success:

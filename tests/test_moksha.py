@@ -18,7 +18,8 @@ sys.modules["pgpy.pgp"] = MagicMock()
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from services.operations import OperationsService
-from domain import PersonalServerRequest, FileMetadata
+from domain.value_objects import PersonalServerRequest
+from domain.entities import FileMetadata
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from utils.identity_server import IdentityServer
@@ -323,7 +324,7 @@ def test_real_personal_server_flow():
     print(f"⚠️  File ID: {file_id} must exist in data registry")
 
     # Mock FileMetadata to have an encrypted key
-    from domain import FileMetadata
+    from domain.entities import FileMetadata
     from onchain.data_registry import DataRegistry
 
     mock_file_metadata = FileMetadata(

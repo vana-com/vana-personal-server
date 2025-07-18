@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 from api.identity import router
-from domain import PersonalServer
+from domain.value_objects import PersonalServer
 
 # Create test client
 client = TestClient(router)

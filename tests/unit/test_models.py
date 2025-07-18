@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError, BaseModel
-from models import EthereumAddress
+from api.schemas import EthereumAddress
 
 class TestModel(BaseModel):
     address: EthereumAddress

@@ -1,17 +1,25 @@
+"""
+Domain entities - Core business objects with identity.
+"""
+
 from dataclasses import dataclass
 from typing import Any, List, Optional
 from datetime import datetime
 from enum import Enum
 
+
 class OperationStatus(Enum):
+    """Status of an operation."""
     PENDING = "pending"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
+
 @dataclass
 class Operation:
+    """Core operation entity with lifecycle management."""
     id: str
     status: OperationStatus
     created_at: datetime
@@ -20,23 +28,10 @@ class Operation:
     result: Optional[str] = None
     prediction_id: Optional[str] = None
 
-@dataclass
-class ExecuteRequest:
-    permission_grant: str
-
-@dataclass
-class OperationCreated:
-    id: str
-    created_at: str
-    links: dict
-
-@dataclass
-class PersonalServer:
-    address: str
-    public_key: str
 
 @dataclass
 class FileMetadata:
+    """Metadata for encrypted files in the data registry."""
     file_id: int
     owner_address: str
     public_url: str
@@ -44,13 +39,8 @@ class FileMetadata:
 
 
 @dataclass
-class GrantData:
-    typedData: dict
-    signature: str
-
-
-@dataclass
 class PermissionData:
+    """Permission data from blockchain."""
     id: int
     grantor: str
     nonce: int
@@ -59,13 +49,11 @@ class PermissionData:
     is_active: bool
     file_ids: List[int]
 
+
 @dataclass
 class GrantFile:
+    """Grant file configuration for operations."""
     grantee: str
     operation: str
     parameters: dict[str, Any]
     expires: Optional[int] = None
-
-@dataclass
-class PersonalServerRequest:
-    permission_id: int

@@ -6,7 +6,7 @@ from typing import Any, Optional
 import jsonschema
 from jsonschema import ValidationError as JsonSchemaValidationError
 
-from domain import GrantFile
+from domain.entities import GrantFile
 
 LLM_INFERENCE_OPERATION = "llm_inference"
 

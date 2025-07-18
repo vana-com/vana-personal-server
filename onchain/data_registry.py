@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 from web3 import Web3
-from domain import FileMetadata
+from domain.entities import FileMetadata
 from .chain import Chain, get_data_registry_address
 from .abi import get_abi
 
@@ -70,8 +70,8 @@ class DataRegistry:
             ).call()
 
             if encrypted_key:
-                logger.info(
-                    f"Got encrypted key for file {file_id} and server {personal_server_address}: {bytes.fromhex(encrypted_key)}"
+                logger.debug(
+                    f"Successfully retrieved encrypted key for file {file_id} and server {personal_server_address}"
                 )
                 return encrypted_key
             else:

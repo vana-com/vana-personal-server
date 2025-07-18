@@ -1,11 +1,10 @@
 from fastapi import APIRouter, HTTPException, Query
 from services.identity import IdentityService
-from models import IdentityRequestModel, IdentityResponseModel, PersonalServerModel, EthereumAddress, ErrorResponse
-from exceptions import VanaAPIError
+from api.schemas import IdentityRequestModel, IdentityResponseModel, PersonalServerModel, EthereumAddress, ErrorResponse
+from domain.exceptions import VanaAPIError
+from dependencies import IdentityServiceDep
 
 router = APIRouter()
-
-identity_service = IdentityService()
 
 @router.get(
     '/identity',
@@ -15,7 +14,10 @@ identity_service = IdentityService()
         500: {"model": ErrorResponse, "description": "Server error"}
     }
 )
-async def get_identity(address: EthereumAddress = Query(..., description="EIP-55 checksum address")):
+async def get_identity(
+    address: EthereumAddress = Query(..., description="EIP-55 checksum address"),
+    identity_service: IdentityServiceDep = None
+):
     try:
         identity = identity_service.derive_server_identity(address)
         return IdentityResponseModel(

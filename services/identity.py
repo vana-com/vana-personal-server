@@ -1,10 +1,10 @@
 import logging
 from typing import Dict, Any
-from domain import PersonalServer
+from domain.value_objects import PersonalServer
 from dataclasses import dataclass
 from utils.derive_ethereum_keys import derive_ethereum_keys
-from settings import settings
-from exceptions import ValidationError, OperationError
+from settings import get_settings
+from domain.exceptions import ValidationError, OperationError
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +40,9 @@ class IdentityService:
             logger.info(f"Derived index {derivation_index} (type: {type(derivation_index)}) for user {user_address}")
 
             # Use the existing method to derive keys
+            settings = get_settings()
             crypto_keys = derive_ethereum_keys(
-                settings.WALLET_MNEMONIC, derivation_index, settings.MNEMONIC_LANGUAGE
+                settings.wallet_mnemonic, derivation_index, settings.mnemonic_language
             )
 
             logger.info(

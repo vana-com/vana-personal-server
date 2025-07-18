@@ -13,7 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from services.operations import OperationsService
 from compute.replicate import ReplicateLlmInference
-from domain import FileMetadata, GrantFile
+from domain.entities import FileMetadata, GrantFile
 from onchain.chain import MOKSHA
 from onchain.data_permissions import PermissionData
 from unittest.mock import patch, Mock

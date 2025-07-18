@@ -4,7 +4,7 @@ import logging
 from typing import Dict, Any
 from dataclasses import dataclass, asdict
 from .base import BaseCompute, ExecuteResponse, GetResponse
-from settings import settings
+from settings import get_settings
 from onchain.data_registry import GrantFile
 
 logger = logging.getLogger(__name__)
@@ -55,13 +55,14 @@ class ReplicateLlmInference(BaseCompute):
     """Replicate API provider for ML model inference."""
     
     def __init__(self):
+        self.settings = get_settings()
         self.client = replicate.Client(
-            api_token=settings.REPLICATE_API_TOKEN
+            api_token=self.settings.replicate_api_token
         )
         self.model_name = "deepseek-ai/deepseek-v3"
         self.base_url = "https://api.replicate.com/v1"
         self.headers = {
-            "Authorization": f"Token {settings.REPLICATE_API_TOKEN}",
+            "Authorization": f"Token {self.settings.replicate_api_token}",
             "Content-Type": "application/json"
         }
 
