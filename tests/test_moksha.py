@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 from unittest.mock import Mock, patch, MagicMock
 from dotenv import load_dotenv
 from eth_account.messages import encode_defunct
@@ -16,11 +17,11 @@ sys.modules["pgpy.pgp"] = MagicMock()
 # Add the server directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from server import Server
-from entities import PersonalServerRequest, FileMetadata
+from services.operations import OperationsService
+from domain import PersonalServerRequest, FileMetadata
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from identity.identity_server import IdentityServer
+from utils.identity_server import IdentityServer
 
 load_dotenv()
 
@@ -137,10 +138,10 @@ def test_comprehensive_personal_server():
 
         # Mock only the problematic dependencies
         with patch(
-            "server.download_file", return_value=encrypted_file_content.encode()
+            "files.download_file", return_value=encrypted_file_content.encode()
         ):
             with patch(
-                "server.decrypt_user_data", return_value=test_file_content.encode()
+                "files.decrypt_user_data", return_value=test_file_content.encode()
             ):
                 # Test the key derivation and encryption flow
                 print("✅ File download and decryption mocked successfully")
@@ -198,19 +199,17 @@ def test_comprehensive_personal_server():
         print(f"❌ Comprehensive test failed: {e}")
         print(f"Error details: {type(e).__name__}: {str(e)}")
         import traceback
-
         traceback.print_exc()
         return False
 
 
 def test_key_derivation_consistency():
     """Test that key derivation is deterministic and consistent"""
-    print("\n🔐 Testing key derivation consistency...")
+    print("\n🔑 Testing key derivation consistency...")
 
     user_address = "0xd7Ae9319049f0B6cA9AD044b165c5B4F143EF451"
     identity_server = IdentityServer()
 
-    # Derive keys multiple times
     keys1 = identity_server.derive_user_server_address(user_address)
     keys2 = identity_server.derive_user_server_address(user_address)
 
@@ -303,7 +302,7 @@ def test_real_personal_server_flow():
         encrypted_symmetric_key_hex = "00" * 32
         # Patch decrypt_with_wallet_private_key to just return the symmetric key as hex
         ecies_decrypt_patch = patch(
-            "server.decrypt_with_private_key", return_value=symmetric_key.hex()
+            "files.decrypt_with_private_key", return_value=symmetric_key.hex()
         )
 
     # Prepare request JSON and signature
@@ -324,7 +323,7 @@ def test_real_personal_server_flow():
     print(f"⚠️  File ID: {file_id} must exist in data registry")
 
     # Mock FileMetadata to have an encrypted key
-    from entities import FileMetadata
+    from domain import FileMetadata
     from onchain.data_registry import DataRegistry
 
     mock_file_metadata = FileMetadata(
@@ -336,14 +335,28 @@ def test_real_personal_server_flow():
 
     # Patch only the external dependencies (but not contract integrations or decrypt)
     context_managers = [
-        patch("server.download_file", return_value=b"ENCRYPTED_CONTENT"),
-        patch("server.decrypt_user_data", return_value=test_file_content.encode()),
+        patch("files.download_file", return_value=b"ENCRYPTED_CONTENT"),
+        patch("services.operations.decrypt_user_data", return_value=test_file_content.encode()),
+        patch("services.operations.decrypt_with_private_key", return_value=symmetric_key.hex()),
         patch.object(
             DataRegistry, "fetch_file_metadata", return_value=mock_file_metadata
         ),
+        patch("onchain.data_permissions.DataPermissions.fetch_permission_from_blockchain", return_value=Mock(
+            id=permission_id,
+            grantor=user_address,
+            nonce=1,
+            grant="ipfs://QmTestGrantData",  # Use a non-existent grant URL
+            signature=b"test_signature",
+            is_active=True,
+            file_ids=[999],
+        )),
+        patch("services.operations.fetch_raw_grant_file", return_value={
+            "grantee": "0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4",
+            "operation": "llm_inference",
+            "parameters": {"prompt": "Analyze this: {{data}}"},
+            "expires": int(time.time()) + 3600 * 3  # 3 hours from now
+        }),
     ]
-    if ecies_decrypt_patch:
-        context_managers.append(ecies_decrypt_patch)
 
     from contextlib import ExitStack
 
@@ -354,11 +367,14 @@ def test_real_personal_server_flow():
         mock_llm = Mock()
         mock_llm.run = Mock(return_value="LLM OUTPUT: " + test_file_content)
 
-        # Create the real PersonalServer instance
+        # Create the real OperationsService instance
         from onchain.chain import MOKSHA
+        from compute.replicate import ReplicateCompute
 
-        server = Server(llm=mock_llm, chain=MOKSHA)
-        output = server.execute(request_json, signature.signature)
+        mock_compute = Mock()
+        mock_compute.execute = Mock(return_value="LLM OUTPUT: " + test_file_content)
+        operations_service = OperationsService(mock_compute, MOKSHA)
+        output = operations_service.create(request_json, signature.signature)
         print(f"✅ Server.execute output: {output}")
         assert output == "LLM OUTPUT: " + test_file_content
         print("✅ Real PersonalServer flow test passed!")
@@ -409,4 +425,4 @@ if __name__ == "__main__":
     if passed == total:
         print("\n🎉 All tests passed! The personal server is working correctly.")
     else:
-        print(f"\n⚠️  {total - passed} test(s) failed. Please check the implementation.")
+        print(f"\n⚠️  {total - passed} test(s) failed. Please check the implementation.") 

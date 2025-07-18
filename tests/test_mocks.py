@@ -11,12 +11,11 @@ import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from server import Server
-from llm.llm import Llm
-from entities import FileMetadata
+from services.operations import OperationsService
+from compute.replicate import ReplicateCompute
+from domain import FileMetadata, GrantFile
 from onchain.chain import MOKSHA
 from onchain.data_permissions import PermissionData
-from entities import GrantFile
 from unittest.mock import patch, Mock
 
 load_dotenv()
@@ -52,11 +51,11 @@ def test_ecies_decryption():
         return False
 
 
-@patch("server.download_file", return_value=b"test_file_content")
-@patch("server.decrypt_with_private_key", return_value="test_symmetric_key")
-@patch("server.decrypt_user_data", return_value=b"decrypted_file_content")
+@patch("files.download_file", return_value=b"test_file_content")
+@patch("files.decrypt_with_private_key", return_value="test_symmetric_key")
+@patch("files.decrypt_user_data", return_value=b"decrypted_file_content")
 @patch("onchain.data_permissions.DataPermissions.fetch_permission_from_blockchain")
-@patch("server.fetch_raw_grant_file")
+@patch("grants.fetch_raw_grant_file")
 @patch("onchain.data_registry.DataRegistry.fetch_file_metadata")
 def test_personal_server(
     mock_file_metadata,
@@ -86,9 +85,9 @@ def test_personal_server(
         )
         print(f"✅ Message signed successfully. Signature: {signature.signature.hex()}")
 
-        # Setup PersonalServer with mocks
-        dummy_llm = Llm(client=None)
-        dummy_llm.run = lambda prompt: "Processed prompt: " + prompt
+        # Setup OperationsService with mocks
+        compute = ReplicateCompute()
+        operations_service = OperationsService(compute, MOKSHA)
 
         # Mock blockchain interactions
         mock_permission_data = PermissionData(
@@ -117,8 +116,7 @@ def test_personal_server(
         )
         mock_file_metadata.return_value = mock_file_metadata
 
-        personal_server = Server(llm=dummy_llm, chain=MOKSHA)
-        output = personal_server.execute(request, signature.signature)
+        output = operations_service.create(request, signature.signature)
         print(f"✅ Personal server executed successfully")
         print(f"Output: {output}")
         return True
