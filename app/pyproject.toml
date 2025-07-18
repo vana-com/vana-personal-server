@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "vana-personal-server-app"
+version = "0.1.0"
+description = "A user-scoped compute service that executes permissioned operations on private data"
+authors = ["Vana Team"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.104.0"
+uvicorn = {extras = ["standard"], version = "^0.24.0"}
+requests = "^2.31.0"
+eth-account = ">=0.13.0"
+replicate = ">=0.24.0"
+python-dotenv = ">=1.0.0"
+web3 = ">=7.0.0"
+pgpy = ">=0.6.0"
+eciespy = ">=0.4.5"
+eth-keys = ">=0.4.0"
+coincurve = ">=21.0.0"
+python-gnupg = ">=0.5.0"
+pycryptodome = ">=3.19.0"
+jsonschema = ">=4.21.0"
+pydantic-settings = ">=2.0.0" 
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+httpx = "^0.25.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api" 
