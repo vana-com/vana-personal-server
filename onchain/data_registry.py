@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 from web3 import Web3
-from entities import FileMetadata
+from domain import FileMetadata
 from .chain import Chain, get_data_registry_address
 from .abi import get_abi
 

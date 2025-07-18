@@ -1,16 +1,16 @@
 from fastapi import APIRouter, HTTPException
 from models import CreateOperationRequest, CreateOperationResponse, GetOperationResponse
-from providers.replicate import ReplicatePredictionResponse, ReplicateProvider
+from services.operations import OperationsService
+from compute.replicate import ReplicateCompute, ReplicatePredictionResponse
+from onchain.chain import MOKSHA
 
 router = APIRouter()
-
-replicate_provider = ReplicateProvider()
-
+operations_service = OperationsService(ReplicateCompute(), MOKSHA)
 
 @router.post("/operations", status_code=202)
 async def create_operation(request: CreateOperationRequest) -> CreateOperationResponse:
     try:
-        prediction: ReplicatePredictionResponse = replicate_provider.create_prediction(
+        prediction: ReplicatePredictionResponse = operations_service.create(
             signature=request.app_signature,
             operation_request_json=request.operation_request_json,
         )
@@ -28,7 +28,7 @@ async def create_operation(request: CreateOperationRequest) -> CreateOperationRe
 @router.get("/operations/{operation_id}")
 async def get_operation(operation_id: str) -> GetOperationResponse:
     try:
-        prediction: ReplicatePredictionResponse = replicate_provider.get_prediction(
+        prediction: ReplicatePredictionResponse = operations_service.get(
             operation_id
         )
 
@@ -49,7 +49,7 @@ async def get_operation(operation_id: str) -> GetOperationResponse:
 @router.post("/operations/cancel", status_code=204)
 async def cancel_operation(operation_id: str):
     try:
-        success = replicate_provider.cancel_prediction(operation_id)
+        success = operations_service.cancel(operation_id)
         if not success:
             raise HTTPException(status_code=404, detail="Operation not found")
     except Exception:

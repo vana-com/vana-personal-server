@@ -1,14 +1,16 @@
 .env*
 !.env.example
 # Python cache
-server/venv
+venv
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .cog/
-server/.cog/
+.cog/
 
 # IDE and AI assistant files
 .idea/
-server/.claude/
+.claude/
+
+.devcontainer/

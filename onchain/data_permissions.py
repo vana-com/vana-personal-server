@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from entities import PermissionData
+from domain import PermissionData
 from web3 import Web3
 
 from .abi import get_abi

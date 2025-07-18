@@ -1,9 +1,10 @@
+import replicate
 import requests
 import json
 import logging
 from typing import Dict, Any
 from dataclasses import dataclass, asdict
-from .base import BaseProvider
+from .base import BaseCompute
 from settings import settings
 
 logger = logging.getLogger(__name__)
@@ -15,14 +16,12 @@ CANCEL_ENDPOINT = "/cancel"
 @dataclass
 class ReplicateInput:
     """Data class for Replicate API input structure."""
-    replicate_api_token: str
-    signature: str
-    request_json: str
+    prompt: str
 
 @dataclass
 class ReplicateRequest:
     """Data class for Replicate API request structure."""
-    version: str
+    model: str
     input: ReplicateInput
 
 @dataclass
@@ -49,28 +48,29 @@ class ReplicatePredictionResponse:
     completed_at: str = None
     urls: ReplicateUrls = None
 
-class ReplicateProvider(BaseProvider):
+class ReplicateCompute(BaseCompute):
     """Replicate API provider for ML model inference."""
     
     def __init__(self):
-        self.base_url = settings.REPLICATE_API_BASE_URL
+        self.client = replicate.Client(
+            api_token=settings.REPLICATE_API_TOKEN
+        )
+        self.model_name = "deepseek-ai/deepseek-v3"
+        self.base_url = "https://api.replicate.com/v1"
         self.headers = {
             "Authorization": f"Token {settings.REPLICATE_API_TOKEN}",
             "Content-Type": "application/json"
         }
 
-    def create_prediction(self, signature: str, operation_request_json: str) -> ReplicatePredictionResponse:
+    def execute(self, request: Dict[str, Any]) -> ReplicatePredictionResponse:
+        prompt = request.get("prompt", "")
         """Create a new prediction on Replicate."""
         try:
-            logger.info(f"Replicate create prediction with signature: {signature} and operation_request_json: {operation_request_json}")
+            logger.info(f"Replicate create prediction with prompt: {prompt}")
 
             replicate_request = ReplicateRequest(
-                version=settings.SERVER_MODEL_VERSION,
-                input=ReplicateInput(
-                    replicate_api_token=settings.REPLICATE_API_TOKEN,
-                    signature=signature,
-                    request_json=operation_request_json
-                )
+                model=self.model_name,
+                input=ReplicateInput(prompt=prompt)
             )
 
             response = requests.post(
@@ -90,7 +90,7 @@ class ReplicateProvider(BaseProvider):
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to create prediction: {str(e)}")
     
-    def get_prediction(self, prediction_id: str) -> ReplicatePredictionResponse:
+    def get(self, prediction_id: str) -> ReplicatePredictionResponse:
         """Get prediction status and results."""
         try:
             response = requests.get(
@@ -109,7 +109,7 @@ class ReplicateProvider(BaseProvider):
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to get prediction: {str(e)}")
     
-    def cancel_prediction(self, prediction_id: str) -> bool:
+    def cancel(self, prediction_id: str) -> bool:
         """Cancel a running prediction."""
         try:
             response = requests.post(

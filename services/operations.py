@@ -1,36 +1,33 @@
-import logging
-import os
-import sys
-
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-
-logger = logging.getLogger(__name__)
 import json
+import logging
 
 import web3
-from entities import FileMetadata, GrantFile, PersonalServerRequest
+from compute.replicate import ReplicateCompute, ReplicatePredictionResponse
+from domain import FileMetadata, GrantFile, PersonalServerRequest
 from eth_account.messages import encode_defunct
 from files import decrypt_user_data, decrypt_with_private_key, download_file
-from llm.llm import Llm
+from grants import fetch_raw_grant_file, validate
+from onchain.chain import Chain
 from onchain.data_permissions import DataPermissions
 from onchain.data_registry import DataRegistry
 from utils.identity_server import IdentityServer
-from grants.fetch import fetch_raw_grant_file
-from grants.validate import validate
+
+logger = logging.getLogger(__name__)
 
 PROMPT_DATA_SEPARATOR = "-----" * 80 + "\n"
 
 
-class Server:
-    def __init__(self, llm: Llm, chain):
-        self.llm = llm
-        self.chain = chain
+class OperationsService:
+    """Replicate API provider for ML model inference."""
+
+    def __init__(self, compute: ReplicateCompute, chain: Chain):
+        self.compute = compute
         self.web3 = web3.Web3(web3.HTTPProvider(chain.url))
         self.data_registry = DataRegistry(chain, self.web3)
         self.data_permissions = DataPermissions(chain, self.web3)
         self.identity_server = IdentityServer()
 
-    def execute(self, request_json: str, signature: str):
+    def create(self, signature: str, request_json: str) -> ReplicatePredictionResponse:
         request = PersonalServerRequest(**json.loads(request_json))
 
         if request.permission_id <= 0:
@@ -67,7 +64,13 @@ class Server:
         files_metadata = self._fetch_files_metadata(permission.file_ids, server_address)
         files_content = self._decrypt_files_content(files_metadata, server_private_key)
         prompt = self._build_prompt(grant_file, files_content)
-        return self.llm.run(prompt)
+        return self.compute.execute({"prompt": prompt})
+
+    def get_prediction(self, prediction_id: str) -> ReplicatePredictionResponse:
+        return self.compute.get(prediction_id)
+
+    def cancel_prediction(self, prediction_id: str) -> bool:
+        return self.compute.cancel(prediction_id)
 
     def recover_app_address(self, request_json: str, signature: str):
         message = encode_defunct(text=request_json)
