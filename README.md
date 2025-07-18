@@ -1,7 +1,8 @@
 # Vana Personal-Server API
 
 ⚠️ **UNDER HEAVY DEVELOPMENT** ⚠️  
-This project is in active development and may contain security vulnerabilities or breaking changes. Use at your own risk in production environments.
+This project is in active development and may contain security vulnerabilities or breaking changes. 
+Use at your own risk in production environments.
 
 A user-scoped compute service that executes permissioned operations on private data. 
 This implementation provides secure compute capabilities with blockchain-based data permissions, 
