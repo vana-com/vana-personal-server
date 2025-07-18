@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from services.identity import IdentityService
 from models import IdentityRequestModel, IdentityResponseModel, PersonalServerModel, EthereumAddress, ErrorResponse
+from exceptions import VanaAPIError
 
 router = APIRouter()
 
@@ -25,7 +26,16 @@ async def get_identity(address: EthereumAddress = Query(..., description="EIP-55
             )
         )
     
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail='Invalid address')
+    except VanaAPIError as e:
+        error_response = ErrorResponse(
+            detail=e.message,
+            error_code=e.error_code,
+            field=getattr(e, 'field', None)
+        )
+        raise HTTPException(status_code=e.status_code, detail=error_response.dict())
     except Exception as e:
-        raise HTTPException(status_code=500, detail='Server error')
+        error_response = ErrorResponse(
+            detail="Internal server error",
+            error_code="INTERNAL_SERVER_ERROR"
+        )
+        raise HTTPException(status_code=500, detail=error_response.dict())

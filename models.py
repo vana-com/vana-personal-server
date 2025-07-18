@@ -43,3 +43,5 @@ class GetOperationResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+    error_code: str
+    field: str | None = None

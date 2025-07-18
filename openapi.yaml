@@ -102,12 +102,131 @@ components:
 
     ErrorResponse:
       type: object
-      required: [detail]
+      required: [detail, error_code]
       properties:
         detail:
           type: string
-          description: Error message
+          description: Human-readable error message
           example: "Operation not found"
+        error_code:
+          type: string
+          description: Machine-readable error code
+          example: "NOT_FOUND_ERROR"
+        field:
+          type: string
+          nullable: true
+          description: Field name when error is related to a specific input field
+          example: "permission_id"
+
+    ValidationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [VALIDATION_ERROR, VALIDATION_ERROR_PERMISSION_ID, VALIDATION_ERROR_USER_ADDRESS, VALIDATION_ERROR_OPERATION_REQUEST_JSON]
+              example: "VALIDATION_ERROR_PERMISSION_ID"
+
+    AuthenticationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [AUTHENTICATION_ERROR]
+              example: "AUTHENTICATION_ERROR"
+
+    AuthorizationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [AUTHORIZATION_ERROR]
+              example: "AUTHORIZATION_ERROR"
+
+    NotFoundErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [NOT_FOUND_ERROR]
+              example: "NOT_FOUND_ERROR"
+
+    BlockchainErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [BLOCKCHAIN_ERROR]
+              example: "BLOCKCHAIN_ERROR"
+
+    FileAccessErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [FILE_ACCESS_ERROR]
+              example: "FILE_ACCESS_ERROR"
+
+    ComputeErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [COMPUTE_ERROR]
+              example: "COMPUTE_ERROR"
+
+    DecryptionErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [DECRYPTION_ERROR]
+              example: "DECRYPTION_ERROR"
+
+    GrantValidationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [GRANT_VALIDATION_ERROR]
+              example: "GRANT_VALIDATION_ERROR"
+
+    OperationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [OPERATION_ERROR]
+              example: "OPERATION_ERROR"
+
+    InternalServerErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error_code:
+              type: string
+              enum: [INTERNAL_SERVER_ERROR]
+              example: "INTERNAL_SERVER_ERROR"
 
   parameters:
     OpId:
@@ -123,6 +242,22 @@ paths:
   /operations:
     post:
       summary: Start an operation (asynchronous)
+      description: |
+        Creates a new operation with the provided request data and signature.
+        
+        **Possible Errors:**
+        - `400 VALIDATION_ERROR`: Invalid request format or missing required fields
+        - `400 VALIDATION_ERROR_PERMISSION_ID`: Invalid or missing permission ID
+        - `400 VALIDATION_ERROR_OPERATION_REQUEST_JSON`: Invalid JSON format in operation request
+        - `400 GRANT_VALIDATION_ERROR`: Grant validation failed
+        - `401 AUTHENTICATION_ERROR`: Invalid signature or unable to recover app address
+        - `404 NOT_FOUND_ERROR`: Permission, file, or grant not found
+        - `500 BLOCKCHAIN_ERROR`: Blockchain communication failed
+        - `500 FILE_ACCESS_ERROR`: Failed to access or download files
+        - `500 DECRYPTION_ERROR`: Failed to decrypt file content
+        - `500 COMPUTE_ERROR`: Compute operation failed
+        - `500 OPERATION_ERROR`: General operation processing error
+        - `500 INTERNAL_SERVER_ERROR`: Unexpected server error
       requestBody:
         required: true
         content:
@@ -134,17 +269,49 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/CreateOperationResponse' }
+        "400":
+          description: Validation or grant validation error
+          content:
+            application/json:
+              schema: 
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResponse'
+                  - $ref: '#/components/schemas/GrantValidationErrorResponse'
+        "401":
+          description: Authentication error (invalid signature)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthenticationErrorResponse' }
+        "404":
+          description: Resource not found (permission, file, or grant)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotFoundErrorResponse' }
         "500":
           description: Server error during operation processing
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              schema: 
+                oneOf:
+                  - $ref: '#/components/schemas/BlockchainErrorResponse'
+                  - $ref: '#/components/schemas/FileAccessErrorResponse'
+                  - $ref: '#/components/schemas/DecryptionErrorResponse'
+                  - $ref: '#/components/schemas/ComputeErrorResponse'
+                  - $ref: '#/components/schemas/OperationErrorResponse'
+                  - $ref: '#/components/schemas/InternalServerErrorResponse'
 
   /operations/{operation_id}:
     parameters: [ { $ref: '#/components/parameters/OpId' } ]
 
     get:
       summary: Poll operation status / result
+      description: |
+        Retrieves the current status and result of an operation.
+        
+        **Possible Errors:**
+        - `404 NOT_FOUND_ERROR`: Operation not found
+        - `500 COMPUTE_ERROR`: Failed to get prediction status
+        - `500 INTERNAL_SERVER_ERROR`: Unexpected server error
       responses:
         "200":
           description: Operation status retrieved successfully
@@ -155,11 +322,26 @@ paths:
           description: Operation not found
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              schema: { $ref: '#/components/schemas/NotFoundErrorResponse' }
+        "500":
+          description: Server error during status retrieval
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ComputeErrorResponse'
+                  - $ref: '#/components/schemas/InternalServerErrorResponse'
 
   /operations/cancel:
     post:
       summary: Cancel a running operation (alternative endpoint)
+      description: |
+        Cancels a running operation.
+        
+        **Possible Errors:**
+        - `404 NOT_FOUND_ERROR`: Operation not found
+        - `500 COMPUTE_ERROR`: Failed to cancel prediction
+        - `500 INTERNAL_SERVER_ERROR`: Unexpected server error
       requestBody:
         required: true
         content:
@@ -178,11 +360,26 @@ paths:
           description: Operation not found
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              schema: { $ref: '#/components/schemas/NotFoundErrorResponse' }
+        "500":
+          description: Server error during cancellation
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ComputeErrorResponse'
+                  - $ref: '#/components/schemas/InternalServerErrorResponse'
 
   /identity:
     get:
       summary: Derive deterministic server identity for a user
+      description: |
+        Derives a deterministic server identity (address and public key) for a user based on their Ethereum address.
+        
+        **Possible Errors:**
+        - `400 VALIDATION_ERROR_USER_ADDRESS`: Invalid user address format
+        - `500 OPERATION_ERROR`: Address derivation failed
+        - `500 INTERNAL_SERVER_ERROR`: Unexpected server error
       parameters:
         - name: address
           in: query
@@ -196,12 +393,15 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IdentityResponseModel' }
         "400":
-          description: Invalid address
+          description: Invalid address format
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              schema: { $ref: '#/components/schemas/ValidationErrorResponse' }
         "500":
-          description: Server error
+          description: Server error during identity derivation
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/OperationErrorResponse'
+                  - $ref: '#/components/schemas/InternalServerErrorResponse'

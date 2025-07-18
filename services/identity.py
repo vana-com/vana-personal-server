@@ -4,6 +4,7 @@ from domain import PersonalServer
 from dataclasses import dataclass
 from utils.derive_ethereum_keys import derive_ethereum_keys
 from settings import settings
+from exceptions import ValidationError, OperationError
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class IdentityService:
         try:
             # Validate inputs
             if not user_address or not user_address.startswith("0x"):
-                raise ValueError("Invalid user address format")
+                raise ValidationError("Invalid user address format", "user_address")
 
             # Convert user address to deterministic index
             derivation_index = self._user_identity_to_index(user_address)
@@ -57,13 +58,15 @@ class IdentityService:
                 personal_server=personal_server
             )
 
+        except ValidationError:
+            raise
         except Exception as e:
             logger.error(f"Failed to derive address for user {user_address}: {e}")
             logger.error(f"Exception type: {type(e)}")
             logger.error(f"Exception args: {e.args}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
-            raise ValueError(f"Address derivation failed: {str(e)}")
+            raise OperationError(f"Address derivation failed: {str(e)}")
 
     def _user_identity_to_index(self, user_address: str) -> int:
         """
