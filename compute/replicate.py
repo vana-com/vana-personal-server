@@ -58,20 +58,13 @@ class ReplicateLlmInference(BaseCompute):
         )
         self.model_name = "deepseek-ai/deepseek-v3"
 
-    def execute(self, grant_file: GrantFile, files_content: list[str]) -> ReplicatePredictionResponse:
+    def execute(self, grant_file: GrantFile, files_content: list[str]) -> ExecuteResponse:
         prompt = self._build_prompt(grant_file, files_content)
-        """Create a new prediction on Replicate."""
         try:
-            logger.info(f"Replicate create prediction with prompt: {prompt}")
-
-            # Use the Replicate client directly with the model identifier
             prediction = self.client.predictions.create(
                 model=self.model_name,
                 input={"prompt": prompt}
             )
-            
-            logger.info(f"Replicate response: {prediction}")
-            
             return ExecuteResponse(
                 id=prediction.id,
                 created_at=prediction.created_at
@@ -79,19 +72,23 @@ class ReplicateLlmInference(BaseCompute):
         except Exception as e:
             raise Exception(f"Failed to create prediction: {str(e)}")
     
-    def get(self, prediction_id: str) -> ReplicatePredictionResponse:
-        """Get prediction status and results."""
+    def get(self, prediction_id: str) -> GetResponse:
         try:
-            # Use the Replicate client directly
             prediction = self.client.predictions.get(prediction_id)
-            logger.info(f"Replicate get response: {prediction}")
+            started_at = prediction.started_at if prediction.started_at else None
+            finished_at = prediction.completed_at if prediction.completed_at else None
+            result = prediction.output if prediction.output else None
+            
+            # Convert list result to string if needed
+            if isinstance(result, list):
+                result = ''.join(result)
             
             return GetResponse(
                 id=prediction.id,
                 status=prediction.status,
-                started_at=prediction.started_at,
-                finished_at=prediction.completed_at,
-                result=prediction.output
+                started_at=started_at,
+                finished_at=finished_at,
+                result=result
             )
         except Exception as e:
             raise Exception(f"Failed to get prediction: {str(e)}")
