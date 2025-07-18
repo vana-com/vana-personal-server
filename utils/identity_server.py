@@ -77,3 +77,17 @@ class IdentityServer:
         except Exception as e:
             logger.error(f"Failed to derive address for user {user_address}: {e}")
             raise ValueError(f"Address derivation failed: {str(e)}")
+
+
+def derive_user_server_address(user_address: str) -> Dict[str, Any]:
+    """
+    Standalone function to derive user server address.
+    
+    Args:
+        user_address: User's Ethereum address
+        
+    Returns:
+        Dictionary containing the derived address, public key, and private key
+    """
+    identity_server = IdentityServer()
+    return identity_server.derive_user_server_address(user_address)

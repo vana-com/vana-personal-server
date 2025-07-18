@@ -139,10 +139,10 @@ def test_comprehensive_personal_server():
 
         # Mock only the problematic dependencies
         with patch(
-            "files.download_file", return_value=encrypted_file_content.encode()
+            "utils.files.download_file", return_value=encrypted_file_content.encode()
         ):
             with patch(
-                "files.decrypt_user_data", return_value=test_file_content.encode()
+                "utils.files.decrypt_user_data", return_value=test_file_content.encode()
             ):
                 # Test the key derivation and encryption flow
                 print("✅ File download and decryption mocked successfully")
@@ -303,7 +303,7 @@ def test_real_personal_server_flow():
         encrypted_symmetric_key_hex = "00" * 32
         # Patch decrypt_with_wallet_private_key to just return the symmetric key as hex
         ecies_decrypt_patch = patch(
-            "files.decrypt_with_private_key", return_value=symmetric_key.hex()
+            "utils.files.decrypt_with_private_key", return_value=symmetric_key.hex()
         )
 
     # Prepare request JSON and signature
@@ -336,7 +336,7 @@ def test_real_personal_server_flow():
 
     # Patch only the external dependencies (but not contract integrations or decrypt)
     context_managers = [
-        patch("files.download_file", return_value=b"ENCRYPTED_CONTENT"),
+        patch("utils.files.download_file", return_value=b"ENCRYPTED_CONTENT"),
         patch("services.operations.decrypt_user_data", return_value=test_file_content.encode()),
         patch("services.operations.decrypt_with_private_key", return_value=symmetric_key.hex()),
         patch.object(

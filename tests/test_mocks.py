@@ -51,9 +51,9 @@ def test_ecies_decryption():
         return False
 
 
-@patch("files.download_file", return_value=b"test_file_content")
-@patch("files.decrypt_with_private_key", return_value="test_symmetric_key")
-@patch("files.decrypt_user_data", return_value=b"decrypted_file_content")
+@patch("utils.files.download_file", return_value=b"test_file_content")
+@patch("utils.files.decrypt_with_private_key", return_value="test_symmetric_key")
+@patch("utils.files.decrypt_user_data", return_value=b"decrypted_file_content")
 @patch("onchain.data_permissions.DataPermissions.fetch_permission_from_blockchain")
 @patch("grants.fetch_raw_grant_file")
 @patch("onchain.data_registry.DataRegistry.fetch_file_metadata")

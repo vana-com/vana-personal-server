@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from api.operations import router as operations_router
 from api.identity import router as identity_router
 import traceback
@@ -15,6 +16,14 @@ app = FastAPI(
     title="Vana Personal-Server API",
     version="0.1.0",
     description="A user-scoped compute service that executes permissioned operations on private data."
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"https?://localhost:\d+",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.exception_handler(Exception)

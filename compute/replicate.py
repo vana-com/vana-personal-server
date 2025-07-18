@@ -5,7 +5,7 @@ from typing import Dict, Any
 from dataclasses import dataclass, asdict
 from .base import BaseCompute, ExecuteResponse, GetResponse
 from settings import get_settings
-from onchain.data_registry import GrantFile
+from domain.entities import GrantFile
 
 logger = logging.getLogger(__name__)
 

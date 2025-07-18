@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Any
-from onchain.data_registry import GrantFile
+from domain.entities import GrantFile
 
 @dataclass
 class ExecuteResponse:

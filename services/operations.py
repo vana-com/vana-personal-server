@@ -17,7 +17,7 @@ from domain.exceptions import (
     OperationError,
     ValidationError,
 )
-from files import decrypt_user_data, decrypt_with_private_key, download_file
+from utils.files import decrypt_user_data, decrypt_with_private_key, download_file
 from grants import fetch_raw_grant_file, validate
 from onchain.chain import Chain
 from onchain.data_permissions import DataPermissions
