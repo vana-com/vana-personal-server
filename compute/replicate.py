@@ -1,17 +1,17 @@
 import replicate
 import requests
-import json
 import logging
 from typing import Dict, Any
 from dataclasses import dataclass, asdict
-from .base import BaseCompute
+from .base import BaseCompute, ExecuteResponse, GetResponse
 from settings import settings
+from onchain.data_registry import GrantFile
 
 logger = logging.getLogger(__name__)
 
 # API endpoint constants
-PREDICTIONS_ENDPOINT = "/predictions"
-CANCEL_ENDPOINT = "/cancel"
+PREDICTIONS_ENDPOINT = "predictions"
+CANCEL_ENDPOINT = "cancel"
 
 @dataclass
 class ReplicateInput:
@@ -48,7 +48,10 @@ class ReplicatePredictionResponse:
     completed_at: str = None
     urls: ReplicateUrls = None
 
-class ReplicateCompute(BaseCompute):
+PROMPT_DATA_SEPARATOR = "-----" * 80 + "\n"
+
+
+class ReplicateLlmInference(BaseCompute):
     """Replicate API provider for ML model inference."""
     
     def __init__(self):
@@ -62,8 +65,8 @@ class ReplicateCompute(BaseCompute):
             "Content-Type": "application/json"
         }
 
-    def execute(self, request: Dict[str, Any]) -> ReplicatePredictionResponse:
-        prompt = request.get("prompt", "")
+    def execute(self, grant_file: GrantFile, files_content: list[str]) -> ReplicatePredictionResponse:
+        prompt = self._build_prompt(grant_file, files_content)
         """Create a new prediction on Replicate."""
         try:
             logger.info(f"Replicate create prediction with prompt: {prompt}")
@@ -73,49 +76,64 @@ class ReplicateCompute(BaseCompute):
                 input=ReplicateInput(prompt=prompt)
             )
 
-            response = requests.post(
-                f"{self.base_url}{PREDICTIONS_ENDPOINT}",
-                headers=self.headers,
-                json=asdict(replicate_request)
-            )
-            response.raise_for_status()
-            response_data = response.json()
+            response_data = self._make_post(json_data=asdict(replicate_request))
             logger.info(f"Replicate response: {response_data}")
             
             # Convert nested urls dict to ReplicateUrls dataclass
             if 'urls' in response_data and response_data['urls']:
                 response_data['urls'] = ReplicateUrls(**response_data['urls'])
             
-            return ReplicatePredictionResponse(**response_data)
+            replicate_prediction_response = ReplicatePredictionResponse(**response_data)
+            return ExecuteResponse(
+                id=replicate_prediction_response.id,
+                created_at=replicate_prediction_response.created_at
+            )
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to create prediction: {str(e)}")
     
     def get(self, prediction_id: str) -> ReplicatePredictionResponse:
         """Get prediction status and results."""
         try:
-            response = requests.get(
-                f"{self.base_url}{PREDICTIONS_ENDPOINT}/{prediction_id}",
-                headers=self.headers
-            )
-            response.raise_for_status()
-            response_data = response.json()
+            response_data = self._make_get(prediction_id)
             logger.info(f"Replicate get response: {response_data}")
             
             # Convert nested urls dict to ReplicateUrls dataclass
             if 'urls' in response_data and response_data['urls']:
                 response_data['urls'] = ReplicateUrls(**response_data['urls'])
             
-            return ReplicatePredictionResponse(**response_data)
+            replicate_prediction_response = ReplicatePredictionResponse(**response_data)
+            return GetResponse(
+                id=replicate_prediction_response.id,
+                status=replicate_prediction_response.status,
+                started_at=replicate_prediction_response.started_at,
+                finished_at=replicate_prediction_response.completed_at,
+                result=replicate_prediction_response.output
+            )
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to get prediction: {str(e)}")
     
     def cancel(self, prediction_id: str) -> bool:
         """Cancel a running prediction."""
         try:
-            response = requests.post(
-                f"{self.base_url}{PREDICTIONS_ENDPOINT}/{prediction_id}{CANCEL_ENDPOINT}",
-                headers=self.headers
-            )
-            return response.status_code == 200
+            response_data = self._make_post(f"/{prediction_id}/{CANCEL_ENDPOINT}")
+            return response_data.get("status") == "canceled"
         except requests.exceptions.RequestException:
             return False 
+        
+    
+    def _build_prompt(self, grant_file: GrantFile, files_content: list[str]):
+        prompt_template = grant_file.parameters.get("prompt", "")
+        concatenated_data = (
+            "\n"
+            + PROMPT_DATA_SEPARATOR.join(files_content)
+            + "\n"
+            + PROMPT_DATA_SEPARATOR
+        )
+        return prompt_template.replace("{{data}}", concatenated_data)
+
+    def _make_post(self, endpoint: str = "", json_data: dict = {}) -> dict:
+        """Make HTTP request to Replicate API."""
+        url = f"{self.base_url}/{PREDICTIONS_ENDPOINT}/{endpoint}"
+        response = requests.post(url, headers=self.headers, json=json_data)
+        response.raise_for_status()
+        return response.json()

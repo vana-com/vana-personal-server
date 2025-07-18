@@ -12,7 +12,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from services.operations import OperationsService
-from compute.replicate import ReplicateCompute
+from compute.replicate import ReplicateLlmInference
 from domain import FileMetadata, GrantFile
 from onchain.chain import MOKSHA
 from onchain.data_permissions import PermissionData
@@ -86,7 +86,7 @@ def test_personal_server(
         print(f"✅ Message signed successfully. Signature: {signature.signature.hex()}")
 
         # Setup OperationsService with mocks
-        compute = ReplicateCompute()
+        compute = ReplicateLlmInference()
         operations_service = OperationsService(compute, MOKSHA)
 
         # Mock blockchain interactions

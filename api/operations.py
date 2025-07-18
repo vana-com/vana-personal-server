@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException
 from models import CreateOperationRequest, CreateOperationResponse, GetOperationResponse, ErrorResponse
 from services.operations import OperationsService
-from compute.replicate import ReplicateCompute, ReplicatePredictionResponse
+from compute.replicate import ReplicateLlmInference, ReplicatePredictionResponse
 from onchain.chain import MOKSHA
 from exceptions import VanaAPIError
+from compute.base import ExecuteResponse, GetResponse
 
 router = APIRouter()
-operations_service = OperationsService(ReplicateCompute(), MOKSHA)
+operations_service = OperationsService(ReplicateLlmInference(), MOKSHA)
 
 @router.post("/operations", status_code=202, responses={
     400: {"model": ErrorResponse, "description": "Validation error"},
@@ -17,7 +18,7 @@ operations_service = OperationsService(ReplicateCompute(), MOKSHA)
 })
 async def create_operation(request: CreateOperationRequest) -> CreateOperationResponse:
     try:
-        prediction: ReplicatePredictionResponse = operations_service.create(
+        prediction: ExecuteResponse = operations_service.create(
             request_json=request.operation_request_json,
             signature=request.app_signature,
         )
@@ -49,7 +50,7 @@ async def create_operation(request: CreateOperationRequest) -> CreateOperationRe
 })
 async def get_operation(operation_id: str) -> GetOperationResponse:
     try:
-        prediction: ReplicatePredictionResponse = operations_service.get_prediction(
+        prediction: GetResponse = operations_service.get(
             operation_id
         )
 
@@ -57,8 +58,8 @@ async def get_operation(operation_id: str) -> GetOperationResponse:
             id=prediction.id,
             status=prediction.status,
             started_at=prediction.started_at,
-            finished_at=prediction.completed_at,
-            result=prediction.output,
+            finished_at=prediction.finished_at,
+            result=prediction.result,
         )
 
         return response
@@ -84,7 +85,7 @@ async def get_operation(operation_id: str) -> GetOperationResponse:
 })
 async def cancel_operation(operation_id: str):
     try:
-        success = operations_service.cancel_prediction(operation_id)
+        success = operations_service.cancel(operation_id)
         if not success:
             error_response = ErrorResponse(
                 detail="Operation not found",

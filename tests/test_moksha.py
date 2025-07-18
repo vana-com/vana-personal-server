@@ -369,7 +369,7 @@ def test_real_personal_server_flow():
 
         # Create the real OperationsService instance
         from onchain.chain import MOKSHA
-        from compute.replicate import ReplicateCompute
+        from compute.replicate import ReplicateLlmInference
 
         mock_compute = Mock()
         mock_compute.execute = Mock(return_value="LLM OUTPUT: " + test_file_content)

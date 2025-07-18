@@ -41,8 +41,13 @@ components:
 
     CreateOperationResponse:
       type: object
-      required: [id, created_at]
+      required: [kind, id, created_at]
       properties:
+        kind:
+          type: string
+          description: Resource type identifier
+          example: "OperationCreated"
+          default: "OperationCreated"
         id:
           type: string
           description: The operation ID for tracking the computation
@@ -55,8 +60,13 @@ components:
 
     GetOperationResponse:
       type: object
-      required: [id, status]
+      required: [kind, id, status]
       properties:
+        kind:
+          type: string
+          description: Resource type identifier
+          example: "OperationStatus"
+          default: "OperationStatus"
         id:
           type: string
           description: The operation ID
@@ -84,8 +94,13 @@ components:
 
     PersonalServerModel:
       type: object
-      required: [address, public_key]
+      required: [kind, address, public_key]
       properties:
+        kind:
+          type: string
+          description: Resource type identifier
+          example: "PersonalServer"
+          default: "PersonalServer"
         address:
           $ref: '#/components/schemas/EthereumAddress'
         public_key:
@@ -93,8 +108,13 @@ components:
 
     IdentityResponseModel:
       type: object
-      required: [user_address, personal_server]
+      required: [kind, user_address, personal_server]
       properties:
+        kind:
+          type: string
+          description: Resource type identifier
+          example: "Identity"
+          default: "Identity"
         user_address:
           $ref: '#/components/schemas/EthereumAddress'
         personal_server:
@@ -102,8 +122,13 @@ components:
 
     ErrorResponse:
       type: object
-      required: [detail, error_code]
+      required: [kind, detail, error_code]
       properties:
+        kind:
+          type: string
+          description: Resource type identifier
+          example: "Error"
+          default: "Error"
         detail:
           type: string
           description: Human-readable error message
