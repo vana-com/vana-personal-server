@@ -27,7 +27,7 @@ class OperationsService:
         self.data_permissions = DataPermissions(chain, self.web3)
         self.identity_server = IdentityServer()
 
-    def create(self, signature: str, request_json: str) -> ReplicatePredictionResponse:
+    def create(self, request_json: str, signature: str) -> ReplicatePredictionResponse:
         request = PersonalServerRequest(**json.loads(request_json))
 
         if request.permission_id <= 0:
@@ -52,9 +52,6 @@ class OperationsService:
             raise ValueError(f"Grant data not found or invalid at {permission.grant}")
 
         grant_file = validate(raw_grant_file, app_address)
-
-        logger.info(f"App {app_address} has access to execute the request: {request}")
-
         server_private_key, server_address = self._derive_user_server_keys(
             permission.grantor
         )
@@ -102,7 +99,9 @@ class OperationsService:
         files_content = []
         for file_metadata in files_metadata:
             encrypted_file_content = download_file(file_metadata.public_url)
-            logger.info(f"Fetched file content from {file_metadata.public_url}")
+            logger.info(f"Fetched file content from {file_metadata.public_url}. File size: {len(encrypted_file_content)} bytes")
+            logger.info(f"Encrypted key: {file_metadata.encrypted_key}")
+            logger.info(f"Server private key: {server_private_key}")
             decrypted_encryption_key = decrypt_with_private_key(
                 file_metadata.encrypted_key, server_private_key
             )

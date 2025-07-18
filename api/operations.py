@@ -11,8 +11,8 @@ operations_service = OperationsService(ReplicateCompute(), MOKSHA)
 async def create_operation(request: CreateOperationRequest) -> CreateOperationResponse:
     try:
         prediction: ReplicatePredictionResponse = operations_service.create(
+            request_json=request.operation_request_json,
             signature=request.app_signature,
-            operation_request_json=request.operation_request_json,
         )
 
         response = CreateOperationResponse(

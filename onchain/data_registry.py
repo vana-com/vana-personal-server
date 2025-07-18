@@ -69,10 +69,13 @@ class DataRegistry:
                 file_id, personal_server_address
             ).call()
 
-            logger.info(
-                f"Got encrypted key for file {file_id} and server {personal_server_address}: {bytes.fromhex(encrypted_key)}"
-            )
-            return encrypted_key
+            if encrypted_key:
+                logger.info(
+                    f"Got encrypted key for file {file_id} and server {personal_server_address}: {bytes.fromhex(encrypted_key)}"
+                )
+                return encrypted_key
+            else:
+                raise ValueError(f"No encrypted key found for file {file_id} and server {personal_server_address}")
 
         except Exception as e:
             logger.error(
