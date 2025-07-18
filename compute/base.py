@@ -13,9 +13,9 @@ class GetResponse:
     """Data class for get response."""
     id: str
     status: str
-    started_at: str
-    finished_at: str
-    result: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    result: str | None = None
 
 class BaseCompute(ABC):
     """Base interface for all compute providers."""

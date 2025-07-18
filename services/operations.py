@@ -112,6 +112,7 @@ class OperationsService:
         except Exception as e:
             if isinstance(e, NotFoundError):
                 raise
+            logger.error(f"Failed to get prediction {prediction_id}: {str(e)}")
             raise ComputeError(f"Failed to get prediction: {str(e)}")
 
     def cancel(self, prediction_id: str) -> bool:
