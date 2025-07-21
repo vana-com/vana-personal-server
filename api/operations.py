@@ -19,13 +19,13 @@ async def create_operation(
     operations_service: OperationsServiceDep
 ) -> CreateOperationResponse:
     try:
-        prediction: ExecuteResponse = operations_service.create(
+        operation: ExecuteResponse = operations_service.create(
             request_json=request.operation_request_json,
             signature=request.app_signature,
         )
 
         response = CreateOperationResponse(
-            id=prediction.id, created_at=prediction.created_at
+            id=operation.id, created_at=operation.created_at
         )
 
         return response
@@ -54,16 +54,16 @@ async def get_operation(
     operations_service: OperationsServiceDep
 ) -> GetOperationResponse:
     try:
-        prediction: GetResponse = operations_service.get(
+        operation: GetResponse = operations_service.get(
             operation_id
         )
 
         response = GetOperationResponse(
-            id=prediction.id,
-            status=prediction.status,
-            started_at=prediction.started_at,
-            finished_at=prediction.finished_at,
-            result=prediction.result,
+            id=operation.id,
+            status=operation.status,
+            started_at=operation.started_at,
+            finished_at=operation.finished_at,
+            result=operation.result,
         )
 
         return response
@@ -83,7 +83,7 @@ async def get_operation(
         raise HTTPException(status_code=500, detail=error_response.dict())
 
 
-@router.post("/operations/cancel", status_code=204, responses={
+@router.post("/operations/{operation_id}/cancel", status_code=204, responses={
     404: {"model": ErrorResponse, "description": "Operation not found"},
     500: {"model": ErrorResponse, "description": "Server error"}
 })

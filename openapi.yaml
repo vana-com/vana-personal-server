@@ -147,111 +147,67 @@ components:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [VALIDATION_ERROR, VALIDATION_ERROR_PERMISSION_ID, VALIDATION_ERROR_USER_ADDRESS, VALIDATION_ERROR_OPERATION_REQUEST_JSON]
-              example: "VALIDATION_ERROR_PERMISSION_ID"
+          description: "Validation error with error_code values: VALIDATION_ERROR, VALIDATION_ERROR_PERMISSION_ID, VALIDATION_ERROR_USER_ADDRESS, VALIDATION_ERROR_OPERATION_REQUEST_JSON"
 
     AuthenticationErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [AUTHENTICATION_ERROR]
-              example: "AUTHENTICATION_ERROR"
+          description: "Authentication error with error_code: AUTHENTICATION_ERROR"
 
     AuthorizationErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [AUTHORIZATION_ERROR]
-              example: "AUTHORIZATION_ERROR"
+          description: "Authorization error with error_code: AUTHORIZATION_ERROR"
 
     NotFoundErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [NOT_FOUND_ERROR]
-              example: "NOT_FOUND_ERROR"
+          description: "Not found error with error_code: NOT_FOUND_ERROR"
 
     BlockchainErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [BLOCKCHAIN_ERROR]
-              example: "BLOCKCHAIN_ERROR"
+          description: "Blockchain error with error_code: BLOCKCHAIN_ERROR"
 
     FileAccessErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [FILE_ACCESS_ERROR]
-              example: "FILE_ACCESS_ERROR"
+          description: "File access error with error_code: FILE_ACCESS_ERROR"
 
     ComputeErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [COMPUTE_ERROR]
-              example: "COMPUTE_ERROR"
+          description: "Compute error with error_code: COMPUTE_ERROR"
 
     DecryptionErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [DECRYPTION_ERROR]
-              example: "DECRYPTION_ERROR"
+          description: "Decryption error with error_code: DECRYPTION_ERROR"
 
     GrantValidationErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [GRANT_VALIDATION_ERROR]
-              example: "GRANT_VALIDATION_ERROR"
+          description: "Grant validation error with error_code: GRANT_VALIDATION_ERROR"
 
     OperationErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [OPERATION_ERROR]
-              example: "OPERATION_ERROR"
+          description: "Operation error with error_code: OPERATION_ERROR"
 
     InternalServerErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
         - type: object
-          properties:
-            error_code:
-              type: string
-              enum: [INTERNAL_SERVER_ERROR]
-              example: "INTERNAL_SERVER_ERROR"
+          description: "Internal server error with error_code: INTERNAL_SERVER_ERROR"
 
   parameters:
     OpId:
@@ -357,9 +313,11 @@ paths:
                   - $ref: '#/components/schemas/ComputeErrorResponse'
                   - $ref: '#/components/schemas/InternalServerErrorResponse'
 
-  /operations/cancel:
+  /operations/{operation_id}/cancel:
+    parameters: [ { $ref: '#/components/parameters/OpId' } ]
+    
     post:
-      summary: Cancel a running operation (alternative endpoint)
+      summary: Cancel a running operation
       description: |
         Cancels a running operation.
         
@@ -367,17 +325,6 @@ paths:
         - `404 NOT_FOUND_ERROR`: Operation not found
         - `500 COMPUTE_ERROR`: Failed to cancel prediction
         - `500 INTERNAL_SERVER_ERROR`: Unexpected server error
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [operation_id]
-              properties:
-                operation_id:
-                  type: string
-                  description: The operation ID to cancel
       responses:
         "204":
           description: Operation cancelled or already finished
