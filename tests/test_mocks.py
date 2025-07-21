@@ -87,7 +87,7 @@ def test_personal_server(
 
         # Setup OperationsService with mocks
         compute = ReplicateLlmInference()
-        operations_service = OperationsService(compute, MOKSHA)
+        operations_service = OperationsService(compute)
 
         # Mock blockchain interactions
         mock_permission_data = PermissionData(
@@ -116,7 +116,7 @@ def test_personal_server(
         )
         mock_file_metadata.return_value = mock_file_metadata
 
-        output = operations_service.create(request, signature.signature)
+        output = operations_service.create(request, signature.signature, MOKSHA.chain_id)
         print(f"✅ Personal server executed successfully")
         print(f"Output: {output}")
         return True

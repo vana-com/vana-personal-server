@@ -374,8 +374,8 @@ def test_real_personal_server_flow():
 
         mock_compute = Mock()
         mock_compute.execute = Mock(return_value="LLM OUTPUT: " + test_file_content)
-        operations_service = OperationsService(mock_compute, MOKSHA)
-        output = operations_service.create(request_json, signature.signature)
+        operations_service = OperationsService(mock_compute)
+        output = operations_service.create(request_json, signature.signature, MOKSHA.chain_id)
         print(f"✅ Server.execute output: {output}")
         assert output == "LLM OUTPUT: " + test_file_content
         print("✅ Real PersonalServer flow test passed!")
