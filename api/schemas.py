@@ -31,6 +31,7 @@ class IdentityResponseModel(BaseModel):
 class CreateOperationRequest(BaseModel):
     app_signature: str
     operation_request_json: str
+    chain_id: int = Field(default=14800, description="Blockchain chain ID. Defaults to Moksha (14800) if not specified.")
 
 class CreateOperationResponse(BaseModel):
     kind: str = Field(default="OperationCreated", description="Resource type identifier")
