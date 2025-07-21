@@ -103,28 +103,28 @@ class OperationsService:
         except Exception as e:
             raise ComputeError(f"Compute operation failed: {str(e)}")
 
-    def get(self, prediction_id: str) -> GetResponse:
+    def get(self, operation_id: str) -> GetResponse:
         try:
-            result = self.compute.get(prediction_id)
+            result = self.compute.get(operation_id)
             if not result:
-                raise NotFoundError("Operation", prediction_id)
+                raise NotFoundError("Operation", operation_id)
             return result
         except Exception as e:
             if isinstance(e, NotFoundError):
                 raise
-            logger.error(f"Failed to get prediction {prediction_id}: {str(e)}")
-            raise ComputeError(f"Failed to get prediction: {str(e)}")
+            logger.error(f"Failed to get operation {operation_id}: {str(e)}")
+            raise ComputeError(f"Failed to get operation: {str(e)}")
 
-    def cancel(self, prediction_id: str) -> bool:
+    def cancel(self, operation_id: str) -> bool:
         try:
-            result = self.compute.cancel(prediction_id)
+            result = self.compute.cancel(operation_id)
             if result is None:
-                raise NotFoundError("Operation", prediction_id)
+                raise NotFoundError("Operation", operation_id)
             return result
         except Exception as e:
             if isinstance(e, NotFoundError):
                 raise
-            raise ComputeError(f"Failed to cancel prediction: {str(e)}")
+            raise ComputeError(f"Failed to cancel operation: {str(e)}")
 
     def _recover_app_address(self, request_json: str, signature: str):
         message = encode_defunct(text=request_json)
