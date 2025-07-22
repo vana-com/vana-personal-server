@@ -22,7 +22,7 @@ from grants import fetch_raw_grant_file, validate
 from onchain.chain import Chain
 from onchain.data_permissions import DataPermissions
 from onchain.data_registry import DataRegistry
-from utils.identity_server import derive_user_server_address
+from services.identity import IdentityService
 
 logger = logging.getLogger(__name__)
 
@@ -131,8 +131,9 @@ class OperationsService:
         return self.web3.eth.account.recover_message(message, signature=signature)
 
     def _derive_user_server_keys(self, grantor: str) -> tuple[str, str]:
-        user_server_keys = derive_user_server_address(grantor)
-        return user_server_keys["private_key"], user_server_keys["address"]
+        identity_service = IdentityService()
+        identity_response = identity_service.derive_server_identity(grantor)
+        return identity_response.personal_server.private_key, identity_response.personal_server.address
 
     def _fetch_files_metadata(
         self, file_ids: list[int], server_address: str

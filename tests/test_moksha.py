@@ -22,7 +22,7 @@ from domain.value_objects import PersonalServerRequest
 from domain.entities import FileMetadata
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from utils.identity_server import IdentityServer
+from services.identity import IdentityService
 
 load_dotenv()
 
@@ -53,12 +53,12 @@ def test_comprehensive_personal_server():
     try:
         # Step 1: Derive personal server private key from user address
         print("\n1️⃣ Deriving personal server private key...")
-        identity_server = IdentityServer()
-        user_server_keys = identity_server.derive_user_server_address(user_address)
+        identity_service = IdentityService()
+        identity_response = identity_service.derive_server_identity(user_address)
 
-        personal_server_private_key = user_server_keys["private_key"]
-        personal_server_public_key = user_server_keys["public_key"]
-        personal_server_address = user_server_keys["address"]
+        personal_server_private_key = identity_response.personal_server.private_key
+        personal_server_public_key = identity_response.personal_server.public_key
+        personal_server_address = identity_response.personal_server.address
 
         print(f"✅ Derived personal server address: {personal_server_address}")
         print(f"✅ Personal server public key: {personal_server_public_key[:20]}...")
@@ -148,12 +148,12 @@ def test_comprehensive_personal_server():
                 print("✅ File download and decryption mocked successfully")
 
                 # Test that we can reconstruct the personal server's private key
-                reconstructed_keys = identity_server.derive_user_server_address(
+                reconstructed_response = identity_service.derive_server_identity(
                     user_address
                 )
                 if (
-                    reconstructed_keys["private_key"] == personal_server_private_key
-                    and reconstructed_keys["address"] == personal_server_address
+                    reconstructed_response.personal_server.private_key == personal_server_private_key
+                    and reconstructed_response.personal_server.address == personal_server_address
                 ):
                     print("✅ Key derivation is deterministic and consistent")
                 else:
@@ -209,15 +209,15 @@ def test_key_derivation_consistency():
     print("\n🔑 Testing key derivation consistency...")
 
     user_address = "0xd7Ae9319049f0B6cA9AD044b165c5B4F143EF451"
-    identity_server = IdentityServer()
+    identity_service = IdentityService()
 
-    keys1 = identity_server.derive_user_server_address(user_address)
-    keys2 = identity_server.derive_user_server_address(user_address)
+    response1 = identity_service.derive_server_identity(user_address)
+    response2 = identity_service.derive_server_identity(user_address)
 
     if (
-        keys1["address"] == keys2["address"]
-        and keys1["public_key"] == keys2["public_key"]
-        and keys1["private_key"] == keys2["private_key"]
+        response1.personal_server.address == response2.personal_server.address
+        and response1.personal_server.public_key == response2.personal_server.public_key
+        and response1.personal_server.private_key == response2.personal_server.private_key
     ):
         print("✅ Key derivation is deterministic and consistent")
         return True
@@ -234,11 +234,11 @@ def test_ecies_encryption_decryption():
         from eciespy import encrypt, decrypt as ecies_decrypt
 
         user_address = "0xd7Ae9319049f0B6cA9AD044b165c5B4F143EF451"
-        identity_server = IdentityServer()
-        user_server_keys = identity_server.derive_user_server_address(user_address)
+        identity_service = IdentityService()
+        identity_response = identity_service.derive_server_identity(user_address)
 
-        personal_server_private_key = user_server_keys["private_key"]
-        personal_server_public_key = user_server_keys["public_key"]
+        personal_server_private_key = identity_response.personal_server.private_key
+        personal_server_public_key = identity_response.personal_server.public_key
 
         # Test data
         test_data = b"This is test data to encrypt"
@@ -281,11 +281,11 @@ def test_real_personal_server_flow():
     prompt_template = "Analyze this: {{data}}"
 
     # Derive keys
-    identity_server = IdentityServer()
-    user_server_keys = identity_server.derive_user_server_address(user_address)
-    server_private_key = user_server_keys["private_key"]
-    server_public_key = user_server_keys["public_key"]
-    server_address = user_server_keys["address"]
+    identity_service = IdentityService()
+    identity_response = identity_service.derive_server_identity(user_address)
+    server_private_key = identity_response.personal_server.private_key
+    server_public_key = identity_response.personal_server.public_key
+    server_address = identity_response.personal_server.address
 
     # ECIES encrypt the symmetric key for the server
     try:

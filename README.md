@@ -117,9 +117,7 @@ vana-personal-server/
 │   ├── value_objects.py     # Value objects
 │   └── exceptions.py        # Custom exceptions
 ├── utils/                    # Utility functions
-│   ├── crypto_service.py    # Cryptographic utilities
 │   ├── derive_ethereum_keys.py # Ethereum key derivation
-│   ├── identity_server.py   # Identity server utilities
 │   └── ipfs.py              # IPFS integration utilities
 ├── llm/                      # Large Language Model integration
 │   └── llm.py               # LLM service implementation
