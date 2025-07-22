@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from utils.derive_ethereum_keys import derive_ethereum_keys
 from settings import get_settings
 from domain.exceptions import ValidationError, OperationError
-from onchain.chain import MOKSHA
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ class IdentityService:
     Uses the existing crypto_service.py for BIP44 key derivation.
     """
 
-    def derive_server_identity(self, user_address: str, chain_id: int = MOKSHA.chain_id) -> IdentityResponse:
+    def derive_server_identity(self, user_address: str) -> IdentityResponse:
         """
         Derive the deterministic address and public key for a user's server based on their address.
         This is the address that will be stored in the smart contract.

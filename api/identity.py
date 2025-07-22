@@ -16,11 +16,10 @@ router = APIRouter()
 )
 async def get_identity(
     address: EthereumAddress = Query(..., description="EIP-55 checksum address"),
-    chain_id: int = Query(14800, description="Optional blockchain chain ID. Defaults to Moksha (14800) if not specified."),
     identity_service: IdentityServiceDep = None
 ):
     try:
-        identity = identity_service.derive_server_identity(address, chain_id)
+        identity = identity_service.derive_server_identity(address)
         return IdentityResponseModel(
             user_address=identity.user_address,
             personal_server=PersonalServerModel(

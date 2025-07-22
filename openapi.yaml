@@ -38,11 +38,6 @@ components:
           type: string
           description: The request JSON which contains permission_id
           example: "{\"permission_id\": 1024}"
-        chain_id:
-          type: integer
-          description: Optional blockchain chain ID. Defaults to Moksha (14800) if not specified.
-          example: 14800
-          default: 14800
 
     CreateOperationResponse:
       type: object
@@ -363,13 +358,6 @@ paths:
           required: true
           schema: { $ref: '#/components/schemas/EthereumAddress' }
           description: Caller's wallet address (EIP-55).
-        - name: chain_id
-          in: query
-          required: false
-          schema:
-            type: integer
-            default: 14800
-          description: Optional blockchain chain ID. Defaults to Moksha (14800) if not specified.
       responses:
         "200":
           description: Server identity retrieved successfully

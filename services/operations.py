@@ -19,7 +19,7 @@ from domain.exceptions import (
 )
 from utils.files import decrypt_user_data, decrypt_with_private_key, download_file
 from grants import fetch_raw_grant_file, validate
-from onchain.chain import Chain, get_chain, MOKSHA
+from onchain.chain import Chain
 from onchain.data_permissions import DataPermissions
 from onchain.data_registry import DataRegistry
 from utils.identity_server import derive_user_server_address
@@ -30,10 +30,13 @@ logger = logging.getLogger(__name__)
 class OperationsService:
     """Service that enforces protocol rules for processing permissions and proxies to compute endpoints."""
 
-    def __init__(self, compute: BaseCompute):
+    def __init__(self, compute: BaseCompute, chain: Chain):
         self.compute = compute
+        self.web3 = web3.Web3(web3.HTTPProvider(chain.url))
+        self.data_registry = DataRegistry(chain, self.web3)
+        self.data_permissions = DataPermissions(chain, self.web3)
 
-    def create(self, request_json: str, signature: str, chain_id: int = MOKSHA.chain_id) -> ExecuteResponse:
+    def create(self, request_json: str, signature: str) -> ExecuteResponse:
         try:
             request = PersonalServerRequest(**json.loads(request_json))
         except (json.JSONDecodeError, TypeError) as e:
@@ -45,16 +48,7 @@ class OperationsService:
             raise ValidationError("Valid permission ID is required", "permission_id")
 
         try:
-            chain = get_chain(chain_id)
-        except ValueError as e:
-            raise ValidationError(str(e), "chain_id")
-
-        web3_instance = web3.Web3(web3.HTTPProvider(chain.url))
-        data_registry = DataRegistry(chain, web3_instance)
-        data_permissions = DataPermissions(chain, web3_instance)
-
-        try:
-            app_address = self._recover_app_address(request_json, signature, web3_instance)
+            app_address = self._recover_app_address(request_json, signature)
             logger.info(f"Recovered app address: {app_address}")
         except Exception as e:
             raise AuthenticationError(
@@ -62,7 +56,7 @@ class OperationsService:
             )
 
         try:
-            permission = data_permissions.fetch_permission_from_blockchain(
+            permission = self.data_permissions.fetch_permission_from_blockchain(
                 request.permission_id
             )
             if not permission:
@@ -101,7 +95,7 @@ class OperationsService:
         except Exception as e:
             raise OperationError(f"Failed to derive server keys: {str(e)}")
 
-        files_metadata = self._fetch_files_metadata(permission.file_ids, server_address, data_registry)
+        files_metadata = self._fetch_files_metadata(permission.file_ids, server_address)
         files_content = self._decrypt_files_content(files_metadata, server_private_key)
 
         try:
@@ -132,21 +126,21 @@ class OperationsService:
                 raise
             raise ComputeError(f"Failed to cancel operation: {str(e)}")
 
-    def _recover_app_address(self, request_json: str, signature: str, web3_instance: web3.Web3):
+    def _recover_app_address(self, request_json: str, signature: str):
         message = encode_defunct(text=request_json)
-        return web3_instance.eth.account.recover_message(message, signature=signature)
+        return self.web3.eth.account.recover_message(message, signature=signature)
 
     def _derive_user_server_keys(self, grantor: str) -> tuple[str, str]:
         user_server_keys = derive_user_server_address(grantor)
         return user_server_keys["private_key"], user_server_keys["address"]
 
     def _fetch_files_metadata(
-        self, file_ids: list[int], server_address: str, data_registry: DataRegistry
+        self, file_ids: list[int], server_address: str
     ) -> list[FileMetadata]:
         files_metadata = []
         for file_id in file_ids:
             try:
-                file_metadata = data_registry.fetch_file_metadata(
+                file_metadata = self.data_registry.fetch_file_metadata(
                     file_id, server_address
                 )
 

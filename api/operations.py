@@ -22,7 +22,6 @@ async def create_operation(
         operation: ExecuteResponse = operations_service.create(
             request_json=request.operation_request_json,
             signature=request.app_signature,
-            chain_id=request.chain_id,
         )
 
         response = CreateOperationResponse(
