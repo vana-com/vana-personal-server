@@ -2,11 +2,12 @@
 Application settings loaded from environment variables using Pydantic Settings.
 """
 
-import os
-from typing import Optional, Literal
-from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import Literal
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     """Application settings with validation and type safety."""
@@ -21,6 +22,12 @@ class Settings(BaseSettings):
         ...,
         alias="WALLET_MNEMONIC",
         description="Wallet mnemonic for key derivation"
+    )
+
+    chain_id: int = Field(
+        ...,
+        alias="CHAIN_ID",
+        description="Blockchain chain ID"
     )
     
     mnemonic_language: str = Field(
@@ -69,31 +76,6 @@ class Settings(BaseSettings):
         alias="REQUEST_TIMEOUT_SECONDS",
         description="Request timeout in seconds"
     )
-    
-    @field_validator('environment')
-    @classmethod
-    def validate_environment(cls, v):
-        """Validate environment setting."""
-        if v not in ['development', 'staging', 'production']:
-            raise ValueError('Environment must be development, staging, or production')
-        return v
-    
-    @field_validator('replicate_api_token')
-    @classmethod
-    def validate_replicate_token(cls, v):
-        """Validate Replicate API token format."""
-        if not v or len(v) < 10:
-            raise ValueError('Replicate API token must be at least 10 characters')
-        return v
-    
-    @field_validator('wallet_mnemonic')
-    @classmethod
-    def validate_wallet_mnemonic(cls, v):
-        """Validate wallet mnemonic."""
-        if not v or len(v.split()) < 12:
-            raise ValueError('Wallet mnemonic must contain at least 12 words')
-        return v
-    
     # Pydantic V2 configuration
     model_config = {
         "env_file": ".env",
