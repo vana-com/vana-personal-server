@@ -1,0 +1,156 @@
+{
+  "timestamp": "2025-07-22T10:10:42.260Z",
+  "summary": {
+    "totalTests": 17,
+    "correctPredictions": 12,
+    "unexpectedPasses": 5,
+    "unexpectedFailures": 0
+  },
+  "results": [
+    {
+      "name": "Data with null bytes",
+      "expectedFailure": true,
+      "actuallyFailed": false,
+      "correctPrediction": false,
+      "reason": "Null bytes may cause UTF-8 encoding/decoding issues",
+      "error": null,
+      "dataLength": 16
+    },
+    {
+      "name": "Pure binary data (non-UTF8)",
+      "expectedFailure": true,
+      "actuallyFailed": false,
+      "correctPrediction": false,
+      "reason": "Invalid UTF-8 sequences may get corrupted during string conversion",
+      "error": null,
+      "dataLength": 8
+    },
+    {
+      "name": "Data with all possible byte values",
+      "expectedFailure": true,
+      "actuallyFailed": false,
+      "correctPrediction": false,
+      "reason": "Not all byte values form valid UTF-8 when combined",
+      "error": null,
+      "dataLength": 256
+    },
+    {
+      "name": "Invalid UTF-8 sequences",
+      "expectedFailure": true,
+      "actuallyFailed": false,
+      "correctPrediction": false,
+      "reason": "Invalid UTF-8 sequences may be handled differently across platforms",
+      "error": null,
+      "dataLength": 9
+    },
+    {
+      "name": "UTF-8 replacement characters",
+      "expectedFailure": false,
+      "actuallyFailed": false,
+      "correctPrediction": true,
+      "reason": "Valid Unicode replacement characters should work",
+      "error": null,
+      "dataLength": 3
+    },
+    {
+      "name": "Extremely large string (1MB)",
+      "expectedFailure": false,
+      "actuallyFailed": false,
+      "correctPrediction": true,
+      "reason": "Large data should work but may cause memory issues",
+      "error": null,
+      "dataLength": 1048576
+    },
+    {
+      "name": "Maximum safe string length approach",
+      "expectedFailure": false,
+      "actuallyFailed": false,
+      "correctPrediction": true,
+      "reason": "Should work but test memory handling",
+      "error": null,
+      "dataLength": 500000
+    },
+    {
+      "name": "ASCII control characters",
+      "expectedFailure": false,
+      "actuallyFailed": false,
+      "correctPrediction": true,
+      "reason": "ASCII control chars should be valid UTF-8",
+      "error": null,
+      "dataLength": 15
+    },
+    {
+      "name": "DEL and high control chars",
+      "expectedFailure": true,
+      "actuallyFailed": false,
+      "correctPrediction": false,
+      "reason": "High control characters may not be valid UTF-8",
+      "error": null,
+      "dataLength": 9
+    },
+    {
+      "name": "Zero private key",
+      "expectedFailure": true,
+      "actuallyFailed": true,
+      "correctPrediction": true,
+      "reason": "Private key cannot be zero on secp256k1",
+      "error": "Failed to decrypt with wallet private key: Secret scalar must be greater than 0 and less than 115792089237316195423570985008687907852837564279074904382605163141518161494337."
+    },
+    {
+      "name": "Maximum private key (curve order)",
+      "expectedFailure": true,
+      "actuallyFailed": true,
+      "correctPrediction": true,
+      "reason": "Private key cannot be >= curve order",
+      "error": "Failed to decrypt with wallet private key: Secret scalar must be greater than 0 and less than 115792089237316195423570985008687907852837564279074904382605163141518161494337."
+    },
+    {
+      "name": "Invalid private key (too large)",
+      "expectedFailure": true,
+      "actuallyFailed": true,
+      "correctPrediction": true,
+      "reason": "Private key larger than curve order",
+      "error": "Failed to decrypt with wallet private key: Secret scalar must be greater than 0 and less than 115792089237316195423570985008687907852837564279074904382605163141518161494337."
+    },
+    {
+      "name": "Short private key",
+      "expectedFailure": true,
+      "actuallyFailed": true,
+      "correctPrediction": true,
+      "reason": "Private key must be 32 bytes (64 hex chars)",
+      "error": "Failed to decrypt with wallet private key: MAC verification failed"
+    },
+    {
+      "name": "Invalid hex in private key",
+      "expectedFailure": true,
+      "actuallyFailed": true,
+      "correctPrediction": true,
+      "reason": "Invalid hex character in private key",
+      "error": "Failed to decrypt with wallet private key: non-hexadecimal number found in fromhex() arg at position 63"
+    },
+    {
+      "name": "Invalid public key point",
+      "expectedFailure": true,
+      "actuallyFailed": true,
+      "correctPrediction": true,
+      "reason": "Public key point not on secp256k1 curve",
+      "error": "encrypt with wallet public key failed: the public key could not be parsed or is invalid"
+    },
+    {
+      "name": "Wrong length public key",
+      "expectedFailure": true,
+      "actuallyFailed": true,
+      "correctPrediction": true,
+      "reason": "Public key wrong length",
+      "error": "encrypt with wallet public key failed: the public key could not be parsed or is invalid"
+    },
+    {
+      "name": "Compressed key with wrong prefix",
+      "expectedFailure": true,
+      "actuallyFailed": true,
+      "correctPrediction": true,
+      "reason": "Invalid compressed public key prefix",
+      "error": "encrypt with wallet public key failed: the public key could not be parsed or is invalid"
+    }
+  ]
+}
