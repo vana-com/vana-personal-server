@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from utils.derive_ethereum_keys import derive_ethereum_keys
 from settings import get_settings
 from domain.exceptions import ValidationError, OperationError
-from onchain.chain import MOKSHA
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +19,16 @@ class IdentityService:
     Uses the existing crypto_service.py for BIP44 key derivation.
     """
 
-    def derive_server_identity(self, user_address: str, chain_id: int = MOKSHA.chain_id) -> IdentityResponse:
+    def derive_server_identity(self, user_address: str) -> IdentityResponse:
         """
-        Derive the deterministic address and public key for a user's server based on their address.
+        Derive the deterministic address, public key, and private key for a user's server based on their address.
         This is the address that will be stored in the smart contract.
 
         Args:
             user_address: User's Ethereum address
 
         Returns:
-            IdentityResponse containing the derived address and public key for the user's server
+            IdentityResponse containing the derived address, public key, and private key for the user's server
         """
         try:
             # Validate inputs
@@ -38,7 +37,7 @@ class IdentityService:
 
             # Convert user address to deterministic index
             derivation_index = self._user_identity_to_index(user_address)
-            logger.info(f"Derived index {derivation_index} (type: {type(derivation_index)}) for user {user_address}")
+            logger.info(f"Derived index {derivation_index} for user {user_address}")
 
             # Use the existing method to derive keys
             settings = get_settings()
@@ -52,7 +51,8 @@ class IdentityService:
 
             personal_server = PersonalServer(
                 address=crypto_keys.address,
-                public_key=crypto_keys.public_key_hex
+                public_key=crypto_keys.public_key_hex,
+                private_key=crypto_keys.private_key_hex
             )
 
             return IdentityResponse(

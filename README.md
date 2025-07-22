@@ -31,6 +31,7 @@ poetry install
 ```bash
 export REPLICATE_API_TOKEN=your_token_here
 export WALLET_MNEMONIC=your_mnemonic_here
+export CHAIN_ID=your_chain_id_here
 export MNEMONIC_LANGUAGE=english  # optional, defaults to english
 ```
 
@@ -58,6 +59,7 @@ docker build -t vana-personal-server .
 docker run -p 8080:8080 \
   -e REPLICATE_API_TOKEN=your_token_here \
   -e WALLET_MNEMONIC=your_mnemonic_here \
+  -e CHAIN_ID=your_chain_id_here \
   -e MNEMONIC_LANGUAGE=english \
   vana-personal-server
 ```
@@ -117,9 +119,7 @@ vana-personal-server/
 │   ├── value_objects.py     # Value objects
 │   └── exceptions.py        # Custom exceptions
 ├── utils/                    # Utility functions
-│   ├── crypto_service.py    # Cryptographic utilities
 │   ├── derive_ethereum_keys.py # Ethereum key derivation
-│   ├── identity_server.py   # Identity server utilities
 │   └── ipfs.py              # IPFS integration utilities
 ├── llm/                      # Large Language Model integration
 │   └── llm.py               # LLM service implementation
@@ -152,9 +152,14 @@ This project uses Poetry for dependency management and follows Python best pract
 
 ### Environment Variables
 
-Required environment variables:
-- `REPLICATE_API_TOKEN` - Your Replicate API token
-- `WALLET_MNEMONIC` - Wallet mnemonic for blockchain operations
+**Mandatory environment variables:**
+
+- `REPLICATE_API_TOKEN` - Replicate API token for LLM inference
+- `WALLET_MNEMONIC` - Wallet mnemonic to derive server key pair
+- `CHAIN_ID` - Blockchain chain ID to use correct RPC endpoint and smart contract addresses
+
+**Optional environment variables:**
+
 - `MNEMONIC_LANGUAGE` - Language for mnemonic (optional, defaults to 'english')
 
 ### Security Considerations

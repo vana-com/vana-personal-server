@@ -10,7 +10,7 @@ from compute.base import BaseCompute
 from compute.replicate import ReplicateLlmInference
 from services.operations import OperationsService
 from services.identity import IdentityService
-from onchain.chain import Chain, MOKSHA
+from onchain.chain import Chain, get_chain
 from settings import Settings, get_settings
 from utils.ipfs import test_gateway_availability
 
@@ -29,16 +29,15 @@ def get_compute_provider() -> BaseCompute:
 
 
 # Chain dependency
-@lru_cache()
-def get_chain() -> Chain:
-    """Get blockchain chain configuration."""
-    return MOKSHA
+def get_chain_dependency(settings: Annotated[Settings, Depends(get_settings_dependency)]) -> Chain:
+    """Get blockchain chain configuration based on settings."""
+    return get_chain(settings.chain_id)
 
 
 # Operations service dependency
 def get_operations_service(
     compute: Annotated[BaseCompute, Depends(get_compute_provider)],
-    chain: Annotated[Chain, Depends(get_chain)]
+    chain: Annotated[Chain, Depends(get_chain_dependency)]
 ) -> OperationsService:
     """Get operations service instance."""
     return OperationsService(compute, chain)
@@ -60,7 +59,7 @@ def check_ipfs_health() -> dict:
 # Type aliases for dependency injection
 SettingsDep = Annotated[Settings, Depends(get_settings_dependency)]
 ComputeDep = Annotated[BaseCompute, Depends(get_compute_provider)]
-ChainDep = Annotated[Chain, Depends(get_chain)]
+ChainDep = Annotated[Chain, Depends(get_chain_dependency)]
 OperationsServiceDep = Annotated[OperationsService, Depends(get_operations_service)]
 IdentityServiceDep = Annotated[IdentityService, Depends(get_identity_service)]
 IPFSHealthDep = Annotated[dict, Depends(check_ipfs_health)]

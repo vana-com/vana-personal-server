@@ -11,6 +11,7 @@ class PersonalServer:
     """Immutable personal server configuration."""
     address: str
     public_key: str
+    private_key: str
 
 
 @dataclass(frozen=True)
