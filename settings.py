@@ -11,20 +11,12 @@ from functools import lru_cache
 class Settings(BaseSettings):
     """Application settings with validation and type safety."""
     
-    # Environment configuration
-    environment: Literal["development", "staging", "production"] = Field(
-        default="development",
-        description="Application environment"
-    )
-    
-    # API Configuration
     replicate_api_token: str = Field(
         ...,
         alias="REPLICATE_API_TOKEN",
         description="Replicate API token for ML model inference"
     )
     
-    # Blockchain Configuration
     wallet_mnemonic: str = Field(
         ...,
         alias="WALLET_MNEMONIC",
@@ -101,18 +93,6 @@ class Settings(BaseSettings):
         if not v or len(v.split()) < 12:
             raise ValueError('Wallet mnemonic must contain at least 12 words')
         return v
-    
-    @model_validator(mode='after')
-    def validate_debug_logging_in_production(self):
-        """Warn about debug logging in production."""
-        if self.enable_debug_logging and self.environment == 'production':
-            import warnings
-            warnings.warn(
-                "Debug logging is enabled in production environment. "
-                "This may expose sensitive data in logs.",
-                UserWarning
-            )
-        return self
     
     # Pydantic V2 configuration
     model_config = {
