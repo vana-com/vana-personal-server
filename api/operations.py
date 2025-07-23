@@ -1,10 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from api.schemas import CreateOperationRequest, CreateOperationResponse, GetOperationResponse, ErrorResponse
-from services.operations import OperationsService
 from domain.exceptions import VanaAPIError
 from compute.base import ExecuteResponse, GetResponse
 from dependencies import OperationsServiceDep
-
+from utils.rate_limit import check_rate_limit_sync
 router = APIRouter()
 
 @router.post("/operations", status_code=202, responses={
@@ -12,16 +11,22 @@ router = APIRouter()
     401: {"model": ErrorResponse, "description": "Authentication error"},
     403: {"model": ErrorResponse, "description": "Authorization error"},
     404: {"model": ErrorResponse, "description": "Resource not found"},
+    429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     500: {"model": ErrorResponse, "description": "Server error"}
 })
 async def create_operation(
-    request: CreateOperationRequest,
-    operations_service: OperationsServiceDep
+        request: Request,
+        body: CreateOperationRequest,
+        operations_service: OperationsServiceDep
 ) -> CreateOperationResponse:
+    # Check rate limit
+    check_rate_limit_sync(request, "operations", body.app_signature)
+
     try:
         operation: ExecuteResponse = operations_service.create(
-            request_json=request.operation_request_json,
-            signature=request.app_signature,
+            request_json=body.operation_request_json,
+            signature=body.app_signature,
+            chain_id=body.chain_id,
         )
 
         response = CreateOperationResponse(
@@ -47,12 +52,17 @@ async def create_operation(
 
 @router.get("/operations/{operation_id}", responses={
     404: {"model": ErrorResponse, "description": "Operation not found"},
+    429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     500: {"model": ErrorResponse, "description": "Server error"}
 })
 async def get_operation(
-    operation_id: str,
-    operations_service: OperationsServiceDep
+        request: Request,
+        operation_id: str,
+        operations_service: OperationsServiceDep
 ) -> GetOperationResponse:
+    # Check rate limit
+    check_rate_limit_sync(request, "default")
+
     try:
         operation: GetResponse = operations_service.get(
             operation_id
@@ -85,12 +95,17 @@ async def get_operation(
 
 @router.post("/operations/{operation_id}/cancel", status_code=204, responses={
     404: {"model": ErrorResponse, "description": "Operation not found"},
+    429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     500: {"model": ErrorResponse, "description": "Server error"}
 })
 async def cancel_operation(
-    operation_id: str,
-    operations_service: OperationsServiceDep
+        request: Request,
+        operation_id: str,
+        operations_service: OperationsServiceDep
 ):
+    # Check rate limit
+    check_rate_limit_sync(request, "default")
+
     try:
         success = operations_service.cancel(operation_id)
         if not success:
