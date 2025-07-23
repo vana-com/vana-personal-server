@@ -2,20 +2,10 @@ FROM python:3.12-slim-bullseye
 
 WORKDIR /app
 
-# Install diagnostic tools and required system libraries
+# Install required system libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
-    strace \
-    gdb \
-    file \
-    procps \
-    libssl-dev \
-    libffi-dev \
-    build-essential \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Python debugging tools
-RUN pip install --no-cache-dir py-spy
 
 RUN pip install --no-cache-dir poetry
 
@@ -36,16 +26,9 @@ RUN echo "[DOCKER BUILD] Checking linked libraries for Python modules..." && \
 
 COPY . .
 
-# Create a wrapper script for strace
-RUN echo '#!/bin/bash\necho "[STRACE] Starting application with strace..."\nstrace -f -e trace=all -o /tmp/strace.log python -m uvicorn app:app --host 0.0.0.0 --port 8080 &\nSTRACE_PID=$!\necho "[STRACE] Strace PID: $STRACE_PID"\n# Monitor the strace log file\ntail -f /tmp/strace.log &\nTAIL_PID=$!\n# Wait for the strace process\nwait $STRACE_PID\nSTATUS=$?\necho "[STRACE] Application exited with status: $STATUS"\necho "[STRACE] Last 100 lines of strace log:"\ntail -n 100 /tmp/strace.log\nexit $STATUS' > /app/start-with-strace.sh && \
-    chmod +x /app/start-with-strace.sh
-
-# Keep root user for now to ensure strace works properly
-# We'll switch back to appuser once we've debugged the issue
-# RUN adduser --disabled-password --gecos '' appuser && chown -R appuser:appuser /app
-# USER appuser
+RUN adduser --disabled-password --gecos '' appuser && chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 8080
 
-# Use strace to trace system calls - this will show us exactly what happens before the crash
-CMD ["/app/start-with-strace.sh"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]

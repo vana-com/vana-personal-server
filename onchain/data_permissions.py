@@ -12,15 +12,27 @@ logger = logging.getLogger(__name__)
 
 class DataPermissions:
     def __init__(self, chain: Chain, web3: Web3):
+        logger.info("[DATA_PERMISSIONS INIT] Starting DataPermissions initialization")
         self.chain = chain
         self.web3 = web3
 
+        logger.info(f"[DATA_PERMISSIONS INIT] Getting data permissions address for chain_id: {chain.chain_id}")
         self.data_permissions_address = get_data_permissions_address(chain.chain_id)
+        logger.info(f"[DATA_PERMISSIONS INIT] Got address: {self.data_permissions_address}")
+        
+        logger.info("[DATA_PERMISSIONS INIT] Getting ABI")
         self.data_permissions_abi = get_abi("DataPermissions")
+        logger.info(f"[DATA_PERMISSIONS INIT] Got ABI with {len(self.data_permissions_abi)} entries")
 
-        self.contract = self.web3.eth.contract(
-            address=self.data_permissions_address, abi=self.data_permissions_abi
-        )
+        logger.info("[DATA_PERMISSIONS INIT] Creating contract instance")
+        try:
+            self.contract = self.web3.eth.contract(
+                address=self.data_permissions_address, abi=self.data_permissions_abi
+            )
+            logger.info(f"[DATA_PERMISSIONS INIT] Contract instance created successfully: {self.contract}")
+        except Exception as e:
+            logger.error(f"[DATA_PERMISSIONS INIT] Failed to create contract: {e}")
+            raise
 
     def fetch_permission_from_blockchain(
         self, permission_id: int
@@ -44,8 +56,25 @@ class DataPermissions:
             
             # THIS IS THE CRITICAL LINE WHERE IT CRASHES
             logger.info(f"[DATA_PERMISSIONS] *** CALLING CONTRACT NOW ***")
-            permission_data = self.contract.functions.permissions(permission_id).call()
-            logger.info(f"[DATA_PERMISSIONS] *** CONTRACT CALL SUCCEEDED ***")
+            try:
+                # Log more details about the contract object
+                logger.info(f"[DATA_PERMISSIONS] Contract address: {self.contract.address}")
+                logger.info(f"[DATA_PERMISSIONS] Attempting to get permissions function")
+                permissions_func = self.contract.functions.permissions
+                logger.info(f"[DATA_PERMISSIONS] Got permissions function: {permissions_func}")
+                logger.info(f"[DATA_PERMISSIONS] Building call with permission_id: {permission_id}")
+                call_obj = permissions_func(permission_id)
+                logger.info(f"[DATA_PERMISSIONS] Call object created: {call_obj}")
+                logger.info(f"[DATA_PERMISSIONS] About to execute .call()")
+                permission_data = call_obj.call()
+                logger.info(f"[DATA_PERMISSIONS] *** CONTRACT CALL SUCCEEDED ***")
+            except Exception as e:
+                logger.error(f"[DATA_PERMISSIONS] Contract call failed with exception: {e}")
+                logger.error(f"[DATA_PERMISSIONS] Exception type: {type(e).__name__}")
+                logger.error(f"[DATA_PERMISSIONS] Exception args: {e.args}")
+                import traceback
+                logger.error(f"[DATA_PERMISSIONS] Traceback: {traceback.format_exc()}")
+                raise
 
             result = PermissionData(
                 id=permission_data[0],
