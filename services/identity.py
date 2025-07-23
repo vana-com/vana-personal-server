@@ -40,10 +40,19 @@ class IdentityService:
             logger.info(f"Derived index {derivation_index} for user {user_address}")
 
             # Use the existing method to derive keys
-            settings = get_settings()
-            crypto_keys = derive_ethereum_keys(
-                settings.wallet_mnemonic, derivation_index, settings.mnemonic_language
-            )
+            logger.info("[IDENTITY] About to call get_settings()")
+            try:
+                settings = get_settings()
+                logger.info("[IDENTITY] Successfully got settings")
+                logger.info(f"[IDENTITY] Mnemonic language: {settings.mnemonic_language}")
+                logger.info("[IDENTITY] About to derive ethereum keys")
+                crypto_keys = derive_ethereum_keys(
+                    settings.wallet_mnemonic, derivation_index, settings.mnemonic_language
+                )
+                logger.info("[IDENTITY] Successfully derived keys")
+            except Exception as e:
+                logger.error(f"[IDENTITY] Failed during settings/key derivation: {e}")
+                raise
 
             logger.info(
                 f"Successfully derived address for user {user_address}: {crypto_keys.address}"

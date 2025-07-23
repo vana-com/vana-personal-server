@@ -64,8 +64,13 @@ class OperationsService:
         logger.info("[OPERATIONS INIT] OperationsService initialization complete")
 
     def create(self, request_json: str, signature: str) -> ExecuteResponse:
+        import uuid
+        request_id = str(uuid.uuid4())[:8]
+        logger.info(f"[REQUEST {request_id}] Starting create operation")
+        
         try:
             request = PersonalServerRequest(**json.loads(request_json))
+            logger.info(f"[REQUEST {request_id}] Parsed request with permission_id: {request.permission_id}")
         except (json.JSONDecodeError, TypeError) as e:
             raise ValidationError(
                 "Invalid JSON format in operation request", "operation_request_json"
@@ -76,16 +81,16 @@ class OperationsService:
 
         try:
             app_address = self._recover_app_address(request_json, signature)
-            logger.info(f"Recovered app address: {app_address}")
+            logger.info(f"[REQUEST {request_id}] Recovered app address: {app_address}")
         except Exception as e:
             raise AuthenticationError(
                 "Invalid signature or unable to recover app address"
             )
 
-        logger.info(f"[OPERATIONS] Moving to permission fetch phase")
+        logger.info(f"[REQUEST {request_id}] Moving to permission fetch phase")
         
         try:
-            logger.info(f"[OPERATIONS] About to fetch permission {request.permission_id} from blockchain")
+            logger.info(f"[REQUEST {request_id}] About to fetch permission {request.permission_id} from blockchain")
             logger.info(f"[OPERATIONS] DataPermissions object: {self.data_permissions}")
             logger.info(f"[OPERATIONS] DataPermissions class: {type(self.data_permissions).__name__}")
             
