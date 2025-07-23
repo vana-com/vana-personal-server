@@ -2,7 +2,7 @@ import json
 import os
 import sys
 import time
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from dotenv import load_dotenv
 from eth_account.messages import encode_defunct
 from web3 import Web3
@@ -268,7 +268,7 @@ def test_ecies_encryption_decryption():
         return False
 
 
-def test_real_personal_server_flow():
+async def test_real_personal_server_flow():
     """
     Test the real Server.execute logic with only external dependencies mocked.
     """
@@ -340,7 +340,7 @@ def test_real_personal_server_flow():
         patch("services.operations.decrypt_user_data", return_value=test_file_content.encode()),
         patch("services.operations.decrypt_with_private_key", return_value=symmetric_key.hex()),
         patch.object(
-            DataRegistry, "fetch_file_metadata", return_value=mock_file_metadata
+            DataRegistry, "fetch_file_metadata", return_value=mock_file_metadata, new_callable=AsyncMock
         ),
         patch("onchain.data_permissions.DataPermissions.fetch_permission_from_blockchain", return_value=Mock(
             id=permission_id,
@@ -350,7 +350,7 @@ def test_real_personal_server_flow():
             signature=b"test_signature",
             is_active=True,
             file_ids=[999],
-        )),
+        ), new_callable=AsyncMock),
         patch("services.operations.fetch_raw_grant_file", return_value={
             "grantee": "0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4",
             "operation": "llm_inference",
@@ -375,14 +375,14 @@ def test_real_personal_server_flow():
         mock_compute = Mock()
         mock_compute.execute = Mock(return_value="LLM OUTPUT: " + test_file_content)
         operations_service = OperationsService(mock_compute)
-        output = operations_service.create(request_json, signature.signature, MOKSHA.chain_id)
+        output = await operations_service.create(request_json, signature.signature)
         print(f"✅ Server.execute output: {output}")
         assert output == "LLM OUTPUT: " + test_file_content
         print("✅ Real PersonalServer flow test passed!")
         return True
 
 
-if __name__ == "__main__":
+async def main():
     print("🚀 Starting comprehensive personal server tests...")
     print("=" * 60)
 
@@ -394,11 +394,15 @@ if __name__ == "__main__":
         ("Real PersonalServer Flow", test_real_personal_server_flow),
     ]
 
+    import asyncio
     results = []
     for test_name, test_func in tests:
         print(f"\n{'=' * 20} {test_name} {'=' * 20}")
         try:
-            result = test_func()
+            if asyncio.iscoroutinefunction(test_func):
+                result = await test_func()
+            else:
+                result = test_func()
             results.append((test_name, result))
         except Exception as e:
             print(f"❌ {test_name} failed with exception: {e}")
@@ -426,4 +430,8 @@ if __name__ == "__main__":
     if passed == total:
         print("\n🎉 All tests passed! The personal server is working correctly.")
     else:
-        print(f"\n⚠️  {total - passed} test(s) failed. Please check the implementation.") 
+        print(f"\n⚠️  {total - passed} test(s) failed. Please check the implementation.")
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main()) 

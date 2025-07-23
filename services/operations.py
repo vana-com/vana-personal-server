@@ -1,7 +1,6 @@
 import json
 import logging
 
-import web3
 from web3 import AsyncWeb3
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
 from domain.entities import FileMetadata
@@ -49,9 +48,10 @@ class OperationsService:
             raise ValidationError("Valid permission ID is required", "permission_id")
 
         try:
-            app_address = await self._recover_app_address(request_json, signature)
+            app_address = self._recover_app_address(request_json, signature)
             logger.info(f"Recovered app address: {app_address}")
         except Exception as e:
+            logger.info(f"Recover app address error: {e}")
             raise AuthenticationError(
                 "Invalid signature or unable to recover app address"
             )
@@ -97,7 +97,7 @@ class OperationsService:
             raise OperationError(f"Failed to derive server keys: {str(e)}")
 
         files_metadata = await self._fetch_files_metadata(permission.file_ids, server_address)
-        files_content = await self._decrypt_files_content(files_metadata, server_private_key)
+        files_content = self._decrypt_files_content(files_metadata, server_private_key)
 
         try:
             return self.compute.execute(grant_file, files_content)
@@ -127,9 +127,9 @@ class OperationsService:
                 raise
             raise ComputeError(f"Failed to cancel operation: {str(e)}")
 
-    async def _recover_app_address(self, request_json: str, signature: str):
+    def _recover_app_address(self, request_json: str, signature: str):
         message = encode_defunct(text=request_json)
-        return await self.web3.eth.account.recover_message(message, signature=signature)
+        return self.web3.eth.account.recover_message(message, signature=signature)
 
     def _derive_user_server_keys(self, grantor: str) -> tuple[str, str]:
         identity_service = IdentityService()
@@ -159,7 +159,7 @@ class OperationsService:
 
         return files_metadata
 
-    async def _decrypt_files_content(
+    def _decrypt_files_content(
         self, files_metadata: list[FileMetadata], server_private_key: str
     ) -> list[str]:
         files_content = []
