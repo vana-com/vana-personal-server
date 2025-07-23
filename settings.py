@@ -2,6 +2,9 @@
 Application settings loaded from environment variables using Pydantic Settings.
 """
 
+from typing import Optional, Literal, List
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings
 from functools import lru_cache
 from typing import Literal
 
@@ -76,6 +79,117 @@ class Settings(BaseSettings):
         alias="REQUEST_TIMEOUT_SECONDS",
         description="Request timeout in seconds"
     )
+
+    # Upstash Redis Configuration
+    upstash_redis_rest_url: Optional[str] = Field(
+        default=None,
+        alias="UPSTASH_REDIS_REST_URL",
+        description="Upstash Redis REST URL"
+    )
+
+    upstash_redis_rest_token: Optional[str] = Field(
+        default=None,
+        alias="UPSTASH_REDIS_REST_TOKEN",
+        description="Upstash Redis REST token"
+    )
+
+    # Rate Limiting Configuration
+    rate_limit_enabled: bool = Field(
+        default=True,
+        alias="RATE_LIMIT_ENABLED",
+        description="Enable rate limiting"
+    )
+
+    rate_limit_use_ip: bool = Field(
+        default=True,
+        alias="RATE_LIMIT_USE_IP",
+        description="Use IP address for rate limiting"
+    )
+
+    rate_limit_use_signature: bool = Field(
+        default=True,
+        alias="RATE_LIMIT_USE_SIGNATURE",
+        description="Use signature for rate limiting"
+    )
+
+    # Rate Limits
+    rate_limit_default_rpm: int = Field(
+        default=60,
+        alias="RATE_LIMIT_DEFAULT_RPM",
+        description="Default requests per minute"
+    )
+
+    rate_limit_operations_per_hour: int = Field(
+        default=100,
+        alias="RATE_LIMIT_OPERATIONS_PER_HOUR",
+        description="Operations per hour"
+    )
+
+    rate_limit_identity_rpm: int = Field(
+        default=120,
+        alias="RATE_LIMIT_IDENTITY_RPM",
+        description="Identity requests per minute"
+    )
+
+    # Whitelist
+    rate_limit_whitelist_ips: Optional[List[str]] = Field(
+        default=None,
+        alias="RATE_LIMIT_WHITELIST_IPS",
+        description="Comma-separated list of whitelisted IPs"
+    )
+
+    @field_validator('replicate_api_token')
+    @classmethod
+    def validate_replicate_token(cls, v):
+        """Validate Replicate API token format."""
+        if not v or len(v) < 10:
+            raise ValueError('Replicate API token must be at least 10 characters')
+        return v
+
+    @field_validator('wallet_mnemonic')
+    @classmethod
+    def validate_wallet_mnemonic(cls, v):
+        """Validate wallet mnemonic."""
+        if not v or len(v.split()) < 12:
+            raise ValueError('Wallet mnemonic must contain at least 12 words')
+        return v
+
+    @field_validator('rate_limit_whitelist_ips', mode='before')
+    @classmethod
+    def parse_whitelist_ips(cls, v):
+        """Parse comma-separated whitelist IPs."""
+        if isinstance(v, str):
+            # Split by comma and strip whitespace
+            ips = [ip.strip() for ip in v.split(',') if ip.strip()]
+            return ips
+        return v or []
+
+    @model_validator(mode='after')
+    def validate_debug_logging_in_production(self):
+        """Warn about debug logging in production."""
+        if self.enable_debug_logging and self.environment == 'production':
+            import warnings
+            warnings.warn(
+                "Debug logging is enabled in production environment. "
+                "This may expose sensitive data in logs.",
+                UserWarning
+            )
+        return self
+
+    @model_validator(mode='after')
+    def validate_rate_limiting_config(self):
+        """Validate rate limiting configuration."""
+        if self.rate_limit_enabled:
+            if not self.upstash_redis_rest_url or not self.upstash_redis_rest_token:
+                import warnings
+                warnings.warn(
+                    "Rate limiting is enabled but Upstash Redis credentials are not configured. "
+                    "Rate limiting will be disabled.",
+                    UserWarning
+                )
+                self.rate_limit_enabled = False
+        return self
+
     # Pydantic V2 configuration
     model_config = {
         "env_file": ".env",

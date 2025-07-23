@@ -3,11 +3,10 @@ import traceback
 import time
 from fastapi import APIRouter, HTTPException, Request
 from api.schemas import CreateOperationRequest, CreateOperationResponse, GetOperationResponse, ErrorResponse
-from services.operations import OperationsService
 from domain.exceptions import VanaAPIError
 from compute.base import ExecuteResponse, GetResponse
 from dependencies import OperationsServiceDep
-
+from utils.rate_limit import check_rate_limit_sync
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -16,6 +15,7 @@ logger = logging.getLogger(__name__)
     401: {"model": ErrorResponse, "description": "Authentication error"},
     403: {"model": ErrorResponse, "description": "Authorization error"},
     404: {"model": ErrorResponse, "description": "Resource not found"},
+    429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     500: {"model": ErrorResponse, "description": "Server error"}
 })
 async def create_operation(
@@ -34,7 +34,10 @@ async def create_operation(
     logger.info(f"[API] Request signature: {request.app_signature[:20]}... (length: {len(request.app_signature)}) [RequestID: {request_id}]")
     logger.info(f"[API] Request JSON length: {len(request.operation_request_json)} chars [RequestID: {request_id}]")
     logger.info(f"[API] Full request JSON: {request.operation_request_json} [RequestID: {request_id}]")
-    
+
+    # Check rate limit
+    check_rate_limit_sync(http_request, "operations", request.app_signature)
+
     try:
         logger.info(f"[API] Calling operations_service.create() [RequestID: {request_id}]")
         operation: ExecuteResponse = await operations_service.create(
@@ -67,7 +70,7 @@ async def create_operation(
             error_code=e.error_code,
             field=getattr(e, 'field', None)
         )
-        raise HTTPException(status_code=e.status_code, detail=error_response.dict())
+        raise HTTPException(status_code=e.status_code, detail=error_response.model_dump())
     except Exception as e:
         processing_time = time.time() - start_time
         logger.error(f"[API] Unexpected exception in create_operation: {str(e)} [RequestID: {request_id}] [ProcessingTime: {processing_time:.3f}s]")
@@ -80,7 +83,7 @@ async def create_operation(
             detail="Internal server error",
             error_code="INTERNAL_SERVER_ERROR"
         )
-        raise HTTPException(status_code=500, detail=error_response.dict())
+        raise HTTPException(status_code=500, detail=error_response.model_dump())
 
 
 @router.get("/operations/{operation_id}", responses={
@@ -129,7 +132,7 @@ async def get_operation(
             error_code=e.error_code,
             field=getattr(e, 'field', None)
         )
-        raise HTTPException(status_code=e.status_code, detail=error_response.dict())
+        raise HTTPException(status_code=e.status_code, detail=error_response.model_dump())
     except Exception as e:
         processing_time = time.time() - start_time
         logger.error(f"[API] Unexpected exception in get_operation({operation_id}): {str(e)} [RequestID: {request_id}] [ProcessingTime: {processing_time:.3f}s]")
@@ -140,11 +143,12 @@ async def get_operation(
             detail="Internal server error",
             error_code="INTERNAL_SERVER_ERROR"
         )
-        raise HTTPException(status_code=500, detail=error_response.dict())
+        raise HTTPException(status_code=500, detail=error_response.model_dump())
 
 
 @router.post("/operations/{operation_id}/cancel", status_code=204, responses={
     404: {"model": ErrorResponse, "description": "Operation not found"},
+    429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     500: {"model": ErrorResponse, "description": "Server error"}
 })
 async def cancel_operation(
@@ -157,7 +161,10 @@ async def cancel_operation(
     
     logger.info(f"[API] POST /operations/{operation_id}/cancel - Starting cancel operation request [RequestID: {request_id}]")
     logger.info(f"[API] Client IP: {http_request.client.host if http_request.client else 'unknown'} [RequestID: {request_id}]")
-    
+
+    # Check rate limit
+    check_rate_limit_sync(http_request, "default")
+
     try:
         logger.info(f"[API] Calling operations_service.cancel({operation_id}) [RequestID: {request_id}]")
         success = operations_service.cancel(operation_id)
@@ -170,7 +177,7 @@ async def cancel_operation(
                 detail="Operation not found",
                 error_code="NOT_FOUND_ERROR"
             )
-            raise HTTPException(status_code=404, detail=error_response.dict())
+            raise HTTPException(status_code=404, detail=error_response.model_dump())
         
         logger.info(f"[API] Operation {operation_id} cancelled successfully [RequestID: {request_id}] [ProcessingTime: {processing_time:.3f}s]")
         
@@ -185,7 +192,7 @@ async def cancel_operation(
             error_code=e.error_code,
             field=getattr(e, 'field', None)
         )
-        raise HTTPException(status_code=e.status_code, detail=error_response.dict())
+        raise HTTPException(status_code=e.status_code, detail=error_response.model_dump())
     except Exception as e:
         processing_time = time.time() - start_time
         logger.error(f"[API] Unexpected exception in cancel_operation({operation_id}): {str(e)} [RequestID: {request_id}] [ProcessingTime: {processing_time:.3f}s]")
@@ -196,4 +203,4 @@ async def cancel_operation(
             detail="Internal server error",
             error_code="INTERNAL_SERVER_ERROR"
         )
-        raise HTTPException(status_code=500, detail=error_response.dict())
+        raise HTTPException(status_code=500, detail=error_response.model_dump())
