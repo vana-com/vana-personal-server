@@ -1,5 +1,7 @@
 import json
 import logging
+import sys
+import platform
 
 import web3
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
@@ -31,10 +33,35 @@ class OperationsService:
     """Service that enforces protocol rules for processing permissions and proxies to compute endpoints."""
 
     def __init__(self, compute: BaseCompute, chain: Chain):
+        logger.info("[OPERATIONS INIT] Starting OperationsService initialization")
+        logger.info(f"[OPERATIONS INIT] Python version: {sys.version}")
+        logger.info(f"[OPERATIONS INIT] Platform: {platform.platform()}")
+        logger.info(f"[OPERATIONS INIT] Web3 module location: {web3.__file__}")
+        logger.info(f"[OPERATIONS INIT] Web3 version: {web3.__version__}")
+        
         self.compute = compute
-        self.web3 = web3.Web3(web3.HTTPProvider(chain.url))
+        
+        logger.info(f"[OPERATIONS INIT] Creating Web3 instance with chain URL: {chain.url}")
+        try:
+            self.web3 = web3.Web3(web3.HTTPProvider(chain.url))
+            logger.info(f"[OPERATIONS INIT] Web3 instance created successfully")
+            logger.info(f"[OPERATIONS INIT] Web3 is connected: {self.web3.is_connected()}")
+            if self.web3.is_connected():
+                logger.info(f"[OPERATIONS INIT] Latest block: {self.web3.eth.block_number}")
+        except Exception as e:
+            logger.error(f"[OPERATIONS INIT] Failed to create Web3 instance: {e}")
+            logger.error(f"[OPERATIONS INIT] Exception type: {type(e).__name__}")
+            raise
+        
+        logger.info("[OPERATIONS INIT] Creating DataRegistry instance")
         self.data_registry = DataRegistry(chain, self.web3)
+        logger.info("[OPERATIONS INIT] DataRegistry created successfully")
+        
+        logger.info("[OPERATIONS INIT] Creating DataPermissions instance")
         self.data_permissions = DataPermissions(chain, self.web3)
+        logger.info("[OPERATIONS INIT] DataPermissions created successfully")
+        
+        logger.info("[OPERATIONS INIT] OperationsService initialization complete")
 
     def create(self, request_json: str, signature: str) -> ExecuteResponse:
         try:
@@ -56,9 +83,15 @@ class OperationsService:
             )
 
         try:
+            logger.info(f"[OPERATIONS] About to fetch permission {request.permission_id} from blockchain")
+            logger.info(f"[OPERATIONS] DataPermissions object: {self.data_permissions}")
+            logger.info(f"[OPERATIONS] DataPermissions class: {type(self.data_permissions).__name__}")
+            
             permission = self.data_permissions.fetch_permission_from_blockchain(
                 request.permission_id
             )
+            
+            logger.info(f"[OPERATIONS] Successfully fetched permission: {permission}")
             if not permission:
                 raise NotFoundError("Permission", str(request.permission_id))
         except Exception as e:

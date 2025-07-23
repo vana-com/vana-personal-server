@@ -27,12 +27,25 @@ class DataPermissions:
     ) -> Optional[PermissionData]:
         """Fetch permission data from the PermissionRegistry contract"""
         try:
+            logger.info(f"[DATA_PERMISSIONS] Starting fetch_permission_from_blockchain for ID: {permission_id}")
+            logger.info(f"[DATA_PERMISSIONS] Web3 instance: {self.web3}")
+            logger.info(f"[DATA_PERMISSIONS] Contract address: {self.data_permissions_address}")
+            
             if not self.web3.is_connected():
+                logger.error("[DATA_PERMISSIONS] Web3 is not connected!")
                 raise ValueError("Web3 not connected to blockchain")
+            
+            logger.info(f"[DATA_PERMISSIONS] Web3 is connected. Chain ID: {self.web3.eth.chain_id}")
 
             # Call the permissions function
-            logger.info(f"Fetching permission {permission_id} from blockchain")
+            logger.info(f"[DATA_PERMISSIONS] About to call contract.functions.permissions({permission_id})")
+            logger.info(f"[DATA_PERMISSIONS] Contract object: {self.contract}")
+            logger.info(f"[DATA_PERMISSIONS] Contract functions: {dir(self.contract.functions)}")
+            
+            # THIS IS THE CRITICAL LINE WHERE IT CRASHES
+            logger.info(f"[DATA_PERMISSIONS] *** CALLING CONTRACT NOW ***")
             permission_data = self.contract.functions.permissions(permission_id).call()
+            logger.info(f"[DATA_PERMISSIONS] *** CONTRACT CALL SUCCEEDED ***")
 
             result = PermissionData(
                 id=permission_data[0],
