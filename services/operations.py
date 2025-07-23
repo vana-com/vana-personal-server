@@ -82,6 +82,8 @@ class OperationsService:
                 "Invalid signature or unable to recover app address"
             )
 
+        logger.info(f"[OPERATIONS] Moving to permission fetch phase")
+        
         try:
             logger.info(f"[OPERATIONS] About to fetch permission {request.permission_id} from blockchain")
             logger.info(f"[OPERATIONS] DataPermissions object: {self.data_permissions}")
