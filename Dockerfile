@@ -2,9 +2,12 @@ FROM python:3.12-slim-bullseye
 
 WORKDIR /app
 
-# Install required system libraries
+# Install required system libraries for web3.py and cryptography
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
+    libsecp256k1-0 \
+    libgmp10 \
+    libsodium23 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir poetry
