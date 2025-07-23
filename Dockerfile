@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     strace \
     gdb \
-    ldd \
     file \
     procps \
     libssl-dev \
