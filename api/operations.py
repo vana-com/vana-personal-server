@@ -26,7 +26,6 @@ async def create_operation(
         operation: ExecuteResponse = operations_service.create(
             request_json=body.operation_request_json,
             signature=body.app_signature,
-            chain_id=body.chain_id,
         )
 
         response = CreateOperationResponse(
@@ -41,13 +40,13 @@ async def create_operation(
             error_code=e.error_code,
             field=getattr(e, 'field', None)
         )
-        raise HTTPException(status_code=e.status_code, detail=error_response.dict())
+        raise HTTPException(status_code=e.status_code, detail=error_response.model_dump())
     except Exception as e:
         error_response = ErrorResponse(
             detail="Internal server error",
             error_code="INTERNAL_SERVER_ERROR"
         )
-        raise HTTPException(status_code=500, detail=error_response.dict())
+        raise HTTPException(status_code=500, detail=error_response.model_dump())
 
 
 @router.get("/operations/{operation_id}", responses={
@@ -84,13 +83,13 @@ async def get_operation(
             error_code=e.error_code,
             field=getattr(e, 'field', None)
         )
-        raise HTTPException(status_code=e.status_code, detail=error_response.dict())
+        raise HTTPException(status_code=e.status_code, detail=error_response.model_dump())
     except Exception as e:
         error_response = ErrorResponse(
             detail="Internal server error",
             error_code="INTERNAL_SERVER_ERROR"
         )
-        raise HTTPException(status_code=500, detail=error_response.dict())
+        raise HTTPException(status_code=500, detail=error_response.model_dump())
 
 
 @router.post("/operations/{operation_id}/cancel", status_code=204, responses={
@@ -113,17 +112,17 @@ async def cancel_operation(
                 detail="Operation not found",
                 error_code="NOT_FOUND_ERROR"
             )
-            raise HTTPException(status_code=404, detail=error_response.dict())
+            raise HTTPException(status_code=404, detail=error_response.model_dump())
     except VanaAPIError as e:
         error_response = ErrorResponse(
             detail=e.message,
             error_code=e.error_code,
             field=getattr(e, 'field', None)
         )
-        raise HTTPException(status_code=e.status_code, detail=error_response.dict())
+        raise HTTPException(status_code=e.status_code, detail=error_response.model_dump())
     except Exception as e:
         error_response = ErrorResponse(
             detail="Internal server error",
             error_code="INTERNAL_SERVER_ERROR"
         )
-        raise HTTPException(status_code=500, detail=error_response.dict())
+        raise HTTPException(status_code=500, detail=error_response.model_dump())

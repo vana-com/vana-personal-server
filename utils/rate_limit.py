@@ -181,7 +181,7 @@ class RateLimiter:
                         "limit": result.limit,
                         "remaining": result.remaining,
                         "reset": result.reset,
-                        "retry_after": max(0, result.reset - int(time.time())) if result.reset else 60
+                        "retry_after": int(max(0, result.reset - int(time.time()))) if result.reset else 60
                     }
 
                     logger.warning(
