@@ -10,12 +10,27 @@ logger = logging.getLogger(__name__)
 
 class DataRegistry:
     def __init__(self, chain: Chain, web3: Web3):
+        logger.info("[DATA_REGISTRY INIT] Starting DataRegistry initialization")
         self.web3 = web3
+        
+        logger.info(f"[DATA_REGISTRY INIT] Getting data registry address for chain_id: {chain.chain_id}")
         self.data_registry_address = get_data_registry_address(chain.chain_id)
+        logger.info(f"[DATA_REGISTRY INIT] Got address: {self.data_registry_address}")
+        
+        logger.info("[DATA_REGISTRY INIT] Getting ABI")
         self.data_registry_abi = get_abi("DataRegistry")
-        self.contract = self.web3.eth.contract(
-            address=self.data_registry_address, abi=self.data_registry_abi
-        )
+        logger.info(f"[DATA_REGISTRY INIT] Got ABI with {len(self.data_registry_abi)} entries")
+        
+        logger.info("[DATA_REGISTRY INIT] Creating contract instance")
+        try:
+            self.contract = self.web3.eth.contract(
+                address=self.data_registry_address, abi=self.data_registry_abi
+            )
+            logger.info(f"[DATA_REGISTRY INIT] Contract instance created successfully")
+        except Exception as e:
+            logger.error(f"[DATA_REGISTRY INIT] Failed to create contract: {e}")
+            logger.error(f"[DATA_REGISTRY INIT] Exception type: {type(e).__name__}")
+            raise
 
     def fetch_file_metadata(
         self, file_id: int, personal_server_address: str
