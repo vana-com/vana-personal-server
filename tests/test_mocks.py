@@ -16,7 +16,7 @@ from compute.replicate import ReplicateLlmInference
 from domain.entities import FileMetadata, GrantFile
 from onchain.chain import MOKSHA
 from onchain.data_permissions import PermissionData
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, AsyncMock
 
 load_dotenv()
 
@@ -54,10 +54,10 @@ def test_ecies_decryption():
 @patch("utils.files.download_file", return_value=b"test_file_content")
 @patch("utils.files.decrypt_with_private_key", return_value="test_symmetric_key")
 @patch("utils.files.decrypt_user_data", return_value=b"decrypted_file_content")
-@patch("onchain.data_permissions.DataPermissions.fetch_permission_from_blockchain")
+@patch("onchain.data_permissions.DataPermissions.fetch_permission_from_blockchain", new_callable=AsyncMock)
 @patch("grants.fetch_raw_grant_file")
-@patch("onchain.data_registry.DataRegistry.fetch_file_metadata")
-def test_personal_server(
+@patch("onchain.data_registry.DataRegistry.fetch_file_metadata", new_callable=AsyncMock)
+async def test_personal_server(
     mock_file_metadata,
     mock_fetch_raw_grant_file,
     mock_fetch_permission,
@@ -116,7 +116,7 @@ def test_personal_server(
         )
         mock_file_metadata.return_value = mock_file_metadata
 
-        output = operations_service.create(request, signature.signature, MOKSHA.chain_id)
+        output = await operations_service.create(request, signature.signature)
         print(f"✅ Personal server executed successfully")
         print(f"Output: {output}")
         return True
@@ -127,13 +127,13 @@ def test_personal_server(
         return False
 
 
-if __name__ == "__main__":
+async def main():
     # Test ECIES decryption first
     ecies_success = test_ecies_decryption()
 
     # Test full personal server flow
     if ecies_success:
-        server_success = test_personal_server()
+        server_success = await test_personal_server()
 
         if server_success:
             print("\n🎉 All tests passed! The personal server is working correctly.")
@@ -141,3 +141,7 @@ if __name__ == "__main__":
             print("\n⚠️  ECIES works but personal server has issues.")
     else:
         print("\n❌ ECIES decryption failed. Personal server cannot work without it.")
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
