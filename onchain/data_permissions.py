@@ -51,8 +51,16 @@ class DataPermissions:
 
             # Call the permissions function
             logger.info(f"[DATA_PERMISSIONS] About to call contract.functions.permissions({permission_id})")
+            logger.info(f"[DATA_PERMISSIONS] Permission ID type: {type(permission_id)}, value: {permission_id}")
             logger.info(f"[DATA_PERMISSIONS] Contract object: {self.contract}")
-            logger.info(f"[DATA_PERMISSIONS] Contract functions: {dir(self.contract.functions)}")
+            logger.info(f"[DATA_PERMISSIONS] Contract address hex: {self.contract.address}")
+            
+            # Log the exact call data that will be sent
+            try:
+                call_data = self.contract.encodeABI(fn_name='permissions', args=[permission_id])
+                logger.info(f"[DATA_PERMISSIONS] Encoded call data: {call_data}")
+            except Exception as e:
+                logger.error(f"[DATA_PERMISSIONS] Failed to encode ABI: {e}")
             
             # THIS IS THE CRITICAL LINE WHERE IT CRASHES
             logger.info(f"[DATA_PERMISSIONS] *** CALLING CONTRACT NOW ***")
@@ -66,6 +74,16 @@ class DataPermissions:
                 call_obj = permissions_func(permission_id)
                 logger.info(f"[DATA_PERMISSIONS] Call object created: {call_obj}")
                 logger.info(f"[DATA_PERMISSIONS] About to execute .call()")
+                
+                # Try a raw RPC call first to see if it's the contract call or RPC in general
+                try:
+                    logger.info(f"[DATA_PERMISSIONS] Testing raw RPC call - getting block number")
+                    block_num = self.web3.eth.block_number
+                    logger.info(f"[DATA_PERMISSIONS] Raw RPC succeeded, block: {block_num}")
+                except Exception as e:
+                    logger.error(f"[DATA_PERMISSIONS] Raw RPC failed: {e}")
+                
+                logger.info(f"[DATA_PERMISSIONS] Now attempting contract call")
                 permission_data = call_obj.call()
                 logger.info(f"[DATA_PERMISSIONS] *** CONTRACT CALL SUCCEEDED ***")
             except Exception as e:
