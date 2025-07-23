@@ -26,24 +26,30 @@ class DataRegistry:
             # For now, we'll proceed with the contract call
 
             # Call the files function
+            logger.info(f"[BLOCKCHAIN] Fetching file metadata for file {file_id} from DataRegistry contract")
+            logger.info(f"[BLOCKCHAIN] Contract address: {self.data_registry_address}, Server: {personal_server_address}")
+            
             file_data = await self.contract.functions.files(file_id).call()
+            logger.info(f"[BLOCKCHAIN] Contract call successful for file {file_id}")
 
-            # Debug: Print the raw file data
-            logger.info(f"Raw file data for file {file_id}: {file_data}")
+            # Log the raw file data
+            logger.info(f"[BLOCKCHAIN] Raw file data for file {file_id}: {file_data}")
 
             file_id_from_contract = file_data[0]
             owner_address = file_data[1]
             public_url = file_data[2]
 
-            # Debug: Print the parsed file data
+            # Log the parsed file data
             logger.info(
-                f"Parsed file data: id={file_id_from_contract}, owner={owner_address}, url={public_url}"
+                f"[BLOCKCHAIN] Parsed file data: id={file_id_from_contract}, owner={owner_address}, url={public_url}"
             )
 
             # Get the encrypted key using the personal server address (not the file owner)
+            logger.info(f"[BLOCKCHAIN] Fetching encrypted key for file {file_id} with server address {personal_server_address}")
             encrypted_key = await self._get_encrypted_key_for_file(
                 file_id, personal_server_address
             )
+            logger.info(f"[BLOCKCHAIN] Encrypted key fetched successfully for file {file_id}")
 
             return FileMetadata(
                 file_id=file_id_from_contract,
@@ -53,7 +59,9 @@ class DataRegistry:
             )
 
         except Exception as e:
-            logger.error(f"Failed to fetch file {file_id} from blockchain: {e}")
+            logger.error(f"[BLOCKCHAIN] Failed to fetch file {file_id} from blockchain: {e}")
+            logger.error(f"[BLOCKCHAIN] Contract address: {self.data_registry_address}, Server: {personal_server_address}")
+            logger.error(f"[BLOCKCHAIN] Exception type: {type(e).__name__}")
             return None
 
     async def _get_encrypted_key_for_file(
@@ -65,20 +73,25 @@ class DataRegistry:
             # For now, we'll proceed with the contract call
 
             # Call the filePermissions function to get the encrypted key
+            logger.info(f"[BLOCKCHAIN] Calling filePermissions contract function for file {file_id}, server {personal_server_address}")
             encrypted_key = await self.contract.functions.filePermissions(
                 file_id, personal_server_address
             ).call()
+            logger.info(f"[BLOCKCHAIN] filePermissions contract call successful for file {file_id}")
 
             if encrypted_key:
-                logger.debug(
-                    f"Successfully retrieved encrypted key for file {file_id} and server {personal_server_address}"
+                logger.info(
+                    f"[BLOCKCHAIN] Successfully retrieved encrypted key for file {file_id} and server {personal_server_address}"
                 )
                 return encrypted_key
             else:
+                logger.error(f"[BLOCKCHAIN] No encrypted key found for file {file_id} and server {personal_server_address}")
                 raise ValueError(f"No encrypted key found for file {file_id} and server {personal_server_address}")
 
         except Exception as e:
             logger.error(
-                f"Failed to fetch encrypted key for file {file_id} and server {personal_server_address}: {e}"
+                f"[BLOCKCHAIN] Failed to fetch encrypted key for file {file_id} and server {personal_server_address}: {e}"
             )
+            logger.error(f"[BLOCKCHAIN] Contract address: {self.data_registry_address}")
+            logger.error(f"[BLOCKCHAIN] Exception type: {type(e).__name__}")
             raise

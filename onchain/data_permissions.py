@@ -31,8 +31,11 @@ class DataPermissions:
             # For now, we'll proceed with the contract call
 
             # Call the permissions function
-            logger.info(f"Fetching permission {permission_id} from blockchain")
+            logger.info(f"[BLOCKCHAIN] Fetching permission {permission_id} from DataPermissions contract")
+            logger.info(f"[BLOCKCHAIN] Contract address: {self.data_permissions_address}, Chain: {self.chain.chain_id}")
+            
             permission_data = await self.contract.functions.permissions(permission_id).call()
+            logger.info(f"[BLOCKCHAIN] Contract call successful for permission {permission_id}")
 
             result = PermissionData(
                 id=permission_data[0],
@@ -44,13 +47,16 @@ class DataPermissions:
                 file_ids=permission_data[6],
             )
 
-            # Debug: logger.info the parsed permission data
-            logger.info(f"Parsed permission data: {result}")
+            # Log the parsed permission data with contract details
+            logger.info(f"[BLOCKCHAIN] Parsed permission data: {result}")
+            logger.info(f"[BLOCKCHAIN] Permission {permission_id} - Grantor: {result.grantor}, Active: {result.is_active}, Files: {len(result.file_ids)}")
 
             return result
 
         except Exception as e:
             logger.error(
-                f"Failed to fetch permission {permission_id} from blockchain: {e}"
+                f"[BLOCKCHAIN] Failed to fetch permission {permission_id} from blockchain: {e}"
             )
+            logger.error(f"[BLOCKCHAIN] Contract address: {self.data_permissions_address}, Chain: {self.chain.chain_id}")
+            logger.error(f"[BLOCKCHAIN] Exception type: {type(e).__name__}")
             return None
