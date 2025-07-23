@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, Query
-from services.identity import IdentityService
+from fastapi import APIRouter, HTTPException, Query, Request
 from api.schemas import IdentityRequestModel, IdentityResponseModel, PersonalServerModel, EthereumAddress, ErrorResponse
 from domain.exceptions import VanaAPIError
 from dependencies import IdentityServiceDep
+from utils.rate_limit import check_rate_limit_sync
 
 router = APIRouter()
 
@@ -11,13 +11,18 @@ router = APIRouter()
     response_model=IdentityResponseModel,
     responses={
         400: {"model": ErrorResponse, "description": "Invalid address"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
         500: {"model": ErrorResponse, "description": "Server error"}
     }
 )
 async def get_identity(
+    request: Request,
     address: EthereumAddress = Query(..., description="EIP-55 checksum address"),
     identity_service: IdentityServiceDep = None
 ):
+    # Check rate limit
+    check_rate_limit_sync(request, "identity", address)
+
     try:
         identity = identity_service.derive_server_identity(address)
         return IdentityResponseModel(
@@ -27,7 +32,7 @@ async def get_identity(
                 public_key=identity.personal_server.public_key
             )
         )
-    
+
     except VanaAPIError as e:
         error_response = ErrorResponse(
             detail=e.message,
