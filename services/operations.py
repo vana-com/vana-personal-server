@@ -2,6 +2,7 @@ import json
 import logging
 
 import web3
+from web3 import AsyncWeb3
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
 from domain.entities import FileMetadata
 from domain.value_objects import PersonalServerRequest
@@ -32,11 +33,11 @@ class OperationsService:
 
     def __init__(self, compute: BaseCompute, chain: Chain):
         self.compute = compute
-        self.web3 = web3.Web3(web3.HTTPProvider(chain.url))
+        self.web3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(chain.url))
         self.data_registry = DataRegistry(chain, self.web3)
         self.data_permissions = DataPermissions(chain, self.web3)
 
-    def create(self, request_json: str, signature: str) -> ExecuteResponse:
+    async def create(self, request_json: str, signature: str) -> ExecuteResponse:
         try:
             request = PersonalServerRequest(**json.loads(request_json))
         except (json.JSONDecodeError, TypeError) as e:
@@ -48,7 +49,7 @@ class OperationsService:
             raise ValidationError("Valid permission ID is required", "permission_id")
 
         try:
-            app_address = self._recover_app_address(request_json, signature)
+            app_address = await self._recover_app_address(request_json, signature)
             logger.info(f"Recovered app address: {app_address}")
         except Exception as e:
             raise AuthenticationError(
@@ -56,7 +57,7 @@ class OperationsService:
             )
 
         try:
-            permission = self.data_permissions.fetch_permission_from_blockchain(
+            permission = await self.data_permissions.fetch_permission_from_blockchain(
                 request.permission_id
             )
             if not permission:
@@ -95,8 +96,8 @@ class OperationsService:
         except Exception as e:
             raise OperationError(f"Failed to derive server keys: {str(e)}")
 
-        files_metadata = self._fetch_files_metadata(permission.file_ids, server_address)
-        files_content = self._decrypt_files_content(files_metadata, server_private_key)
+        files_metadata = await self._fetch_files_metadata(permission.file_ids, server_address)
+        files_content = await self._decrypt_files_content(files_metadata, server_private_key)
 
         try:
             return self.compute.execute(grant_file, files_content)
@@ -126,22 +127,22 @@ class OperationsService:
                 raise
             raise ComputeError(f"Failed to cancel operation: {str(e)}")
 
-    def _recover_app_address(self, request_json: str, signature: str):
+    async def _recover_app_address(self, request_json: str, signature: str):
         message = encode_defunct(text=request_json)
-        return self.web3.eth.account.recover_message(message, signature=signature)
+        return await self.web3.eth.account.recover_message(message, signature=signature)
 
     def _derive_user_server_keys(self, grantor: str) -> tuple[str, str]:
         identity_service = IdentityService()
         identity_response = identity_service.derive_server_identity(grantor)
         return identity_response.personal_server.private_key, identity_response.personal_server.address
 
-    def _fetch_files_metadata(
+    async def _fetch_files_metadata(
         self, file_ids: list[int], server_address: str
     ) -> list[FileMetadata]:
         files_metadata = []
         for file_id in file_ids:
             try:
-                file_metadata = self.data_registry.fetch_file_metadata(
+                file_metadata = await self.data_registry.fetch_file_metadata(
                     file_id, server_address
                 )
 
@@ -158,7 +159,7 @@ class OperationsService:
 
         return files_metadata
 
-    def _decrypt_files_content(
+    async def _decrypt_files_content(
         self, files_metadata: list[FileMetadata], server_private_key: str
     ) -> list[str]:
         files_content = []
