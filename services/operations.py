@@ -205,7 +205,7 @@ class OperationsService:
                     logger.error(f"[SERVICE] File {file_id} metadata not found on blockchain [RequestID: {request_id}]")
                     raise NotFoundError("File", str(file_id))
 
-                logger.info(f"[SERVICE] File {file_id} metadata fetched - URL: {file_metadata.public_url}, Owner: {file_metadata.owner} [RequestID: {request_id}]")
+                logger.info(f"[SERVICE] File {file_id} metadata fetched - URL: {file_metadata.public_url}, Owner: {file_metadata.owner_address} [RequestID: {request_id}]")
                 files_metadata.append(file_metadata)
             except Exception as e:
                 if isinstance(e, NotFoundError):
