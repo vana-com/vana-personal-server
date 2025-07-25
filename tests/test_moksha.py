@@ -346,11 +346,19 @@ async def test_real_personal_server_flow():
             id=permission_id,
             grantor=user_address,
             nonce=1,
+            grantee_id=1,  # New field
             grant="ipfs://QmTestGrantData",  # Use a non-existent grant URL
             signature=b"test_signature",
-            is_active=True,
+            start_block=1000,  # New field
+            end_block=2000,  # New field
             file_ids=[999],
         ), new_callable=AsyncMock),
+        patch("onchain.data_portability_grantees.DataPortabilityGrantees.get_grantee_info", return_value={
+            "owner": user_address,
+            "granteeAddress": "0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4",
+            "publicKey": "test_public_key",
+            "permissionIds": [permission_id],
+        }, new_callable=AsyncMock),
         patch("services.operations.fetch_raw_grant_file", return_value={
             "grantee": "0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4",
             "operation": "llm_inference",
@@ -374,7 +382,7 @@ async def test_real_personal_server_flow():
 
         mock_compute = Mock()
         mock_compute.execute = Mock(return_value="LLM OUTPUT: " + test_file_content)
-        operations_service = OperationsService(mock_compute)
+        operations_service = OperationsService(mock_compute, MOKSHA)
         output = await operations_service.create(request_json, signature.signature)
         print(f"✅ Server.execute output: {output}")
         assert output == "LLM OUTPUT: " + test_file_content

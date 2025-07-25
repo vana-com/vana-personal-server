@@ -27,14 +27,20 @@ CHAINS = {
 CONTRACTS = {
     "DataPermissions": {
         "addresses": {
-            MOKSHA.chain_id: "0x31fb1D48f6B2265A4cAD516BC39E96a18fb7c8de",
-            MAINNET.chain_id: "0x31fb1D48f6B2265A4cAD516BC39E96a18fb7c8de",
+            MOKSHA.chain_id: "0xD54523048AdD05b4d734aFaE7C68324Ebb7373eF",
+            MAINNET.chain_id: "0xD54523048AdD05b4d734aFaE7C68324Ebb7373eF",
         },
     },
     "DataRegistry": {
         "addresses": {
             MOKSHA.chain_id: "0x8C8788f98385F6ba1adD4234e551ABba0f82Cb7C",
             MAINNET.chain_id: "0x8C8788f98385F6ba1adD4234e551ABba0f82Cb7C",
+        },
+    },
+    "DataPortabilityGrantees": {
+        "addresses": {
+            MOKSHA.chain_id: "0x8325C0A0948483EdA023A1A2Fd895e62C5131234",
+            MAINNET.chain_id: "0x8325C0A0948483EdA023A1A2Fd895e62C5131234",
         },
     },
 }
@@ -71,3 +77,8 @@ def get_data_permissions_address(chain_id: int = MOKSHA.chain_id) -> str:
 def get_data_registry_address(chain_id: int = MOKSHA.chain_id) -> str:
     """Get DataRegistry contract address."""
     return get_contract_address(chain_id, "DataRegistry")
+
+
+def get_data_portability_grantees_address(chain_id: int = MOKSHA.chain_id) -> str:
+    """Get DataPortabilityGrantees contract address."""
+    return get_contract_address(chain_id, "DataPortabilityGrantees")

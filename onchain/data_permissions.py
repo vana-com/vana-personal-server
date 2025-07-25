@@ -41,15 +41,17 @@ class DataPermissions:
                 id=permission_data[0],
                 grantor=permission_data[1],
                 nonce=permission_data[2],
-                grant=permission_data[3],
-                signature=permission_data[4],
-                is_active=permission_data[5],
-                file_ids=permission_data[6],
+                grantee_id=permission_data[3],
+                grant=permission_data[4],
+                signature=permission_data[5],
+                start_block=permission_data[6],
+                end_block=permission_data[7],
+                file_ids=permission_data[8],
             )
 
             # Log the parsed permission data with contract details
             logger.info(f"[BLOCKCHAIN] Parsed permission data: {result}")
-            logger.info(f"[BLOCKCHAIN] Permission {permission_id} - Grantor: {result.grantor}, Active: {result.is_active}, Files: {len(result.file_ids)}")
+            logger.info(f"[BLOCKCHAIN] Permission {permission_id} - Grantor: {result.grantor}, GranteeId: {result.grantee_id}, Files: {len(result.file_ids)}")
 
             return result
 
