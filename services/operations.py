@@ -22,6 +22,7 @@ from grants import fetch_raw_grant_file, validate
 from onchain.chain import Chain
 from onchain.data_permissions import DataPermissions
 from onchain.data_registry import DataRegistry
+from onchain.data_portability_grantees import DataPortabilityGrantees
 from services.identity import IdentityService
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class OperationsService:
         self.web3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(chain.url))
         self.data_registry = DataRegistry(chain, self.web3)
         self.data_permissions = DataPermissions(chain, self.web3)
+        self.data_portability_grantees = DataPortabilityGrantees(chain, self.web3)
 
     async def create(self, request_json: str, signature: str, request_id: str = None) -> ExecuteResponse:
         if not request_id:
@@ -92,6 +94,29 @@ class OperationsService:
             logger.error(f"[SERVICE] No file IDs in permission {request.permission_id} [RequestID: {request_id}]")
             raise ValidationError("No file IDs found in permission")
 
+        # Look up the grantee info from the on-chain record using the granteeId
+        try:
+            logger.info(f"[SERVICE] Resolving granteeId {permission.grantee_id} to address [RequestID: {request_id}]")
+            grantee_info = await self.data_portability_grantees.get_grantee_info(permission.grantee_id)
+            if not grantee_info:
+                logger.error(f"[SERVICE] Grantee {permission.grantee_id} not found on blockchain [RequestID: {request_id}]")
+                raise NotFoundError("Grantee", str(permission.grantee_id))
+            
+            on_chain_grantee_address = grantee_info['granteeAddress']
+            logger.info(f"[SERVICE] Resolved granteeId {permission.grantee_id} to address {on_chain_grantee_address} [RequestID: {request_id}]")
+        except Exception as e:
+            if isinstance(e, NotFoundError):
+                raise
+            logger.error(f"[SERVICE] Failed to resolve granteeId {permission.grantee_id}: {str(e)} [RequestID: {request_id}]")
+            raise BlockchainError(f"Failed to resolve granteeId {permission.grantee_id}: {str(e)}")
+
+        # Perform the correct validation: The signature must come from the on-chain grantee
+        if app_address.lower() != on_chain_grantee_address.lower():
+            logger.error(f"[SERVICE] Signature mismatch: recovered {app_address}, expected {on_chain_grantee_address} [RequestID: {request_id}]")
+            raise AuthenticationError(
+                f"Signature recovered address {app_address} does not match on-chain grantee address {on_chain_grantee_address}"
+            )
+
         try:
             logger.info(f"[SERVICE] Fetching grant file from: {permission.grant} [RequestID: {request_id}]")
             raw_grant_file = fetch_raw_grant_file(permission.grant)
@@ -108,12 +133,15 @@ class OperationsService:
             raise FileAccessError(f"Failed to fetch grant file: {str(e)}")
 
         try:
-            logger.info(f"[SERVICE] Validating grant file against app address {app_address} [RequestID: {request_id}]")
-            grant_file = validate(raw_grant_file, app_address)
+            logger.info(f"[SERVICE] Validating grant file against on-chain grantee address {on_chain_grantee_address} [RequestID: {request_id}]")
+            grant_file = validate(raw_grant_file, on_chain_grantee_address)
             logger.info(f"[SERVICE] Grant validation successful [RequestID: {request_id}]")
+            # Optional: Log warning if grant file's grantee doesn't match the on-chain record
+            if raw_grant_file.get("grantee", "").lower() != on_chain_grantee_address.lower():
+                logger.warning(f"[SERVICE] Grant file's grantee {raw_grant_file.get('grantee')} doesn't match on-chain grantee {on_chain_grantee_address} [RequestID: {request_id}]")
         except Exception as e:
             logger.error(f"[SERVICE] Grant validation failed: {str(e)} [RequestID: {request_id}]")
-            logger.error(f"[SERVICE] App address: {app_address}, Grant size: {len(raw_grant_file)} bytes [RequestID: {request_id}]")
+            logger.error(f"[SERVICE] On-chain grantee: {on_chain_grantee_address}, Grant size: {len(raw_grant_file)} bytes [RequestID: {request_id}]")
             raise GrantValidationError(f"Grant validation failed: {str(e)}")
 
         try:

@@ -13,9 +13,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from services.operations import OperationsService
 from compute.replicate import ReplicateLlmInference
-from domain.entities import FileMetadata, GrantFile
+from domain.entities import FileMetadata, GrantFile, PermissionData
 from onchain.chain import MOKSHA
-from onchain.data_permissions import PermissionData
 from unittest.mock import patch, Mock, AsyncMock
 
 load_dotenv()
@@ -57,7 +56,9 @@ def test_ecies_decryption():
 @patch("onchain.data_permissions.DataPermissions.fetch_permission_from_blockchain", new_callable=AsyncMock)
 @patch("grants.fetch_raw_grant_file")
 @patch("onchain.data_registry.DataRegistry.fetch_file_metadata", new_callable=AsyncMock)
+@patch("onchain.data_portability_grantees.DataPortabilityGrantees.get_grantee_info", new_callable=AsyncMock)
 async def test_personal_server(
+    mock_get_grantee_info,
     mock_file_metadata,
     mock_fetch_raw_grant_file,
     mock_fetch_permission,
@@ -87,22 +88,35 @@ async def test_personal_server(
 
         # Setup OperationsService with mocks
         compute = ReplicateLlmInference()
-        operations_service = OperationsService(compute)
+        operations_service = OperationsService(compute, MOKSHA)
 
         # Mock blockchain interactions
         mock_permission_data = PermissionData(
             id=6,
             grantor="0x1234567890123456789012345678901234567890",
             nonce=1,
+            grantee_id=1,  # New field
             grant="ipfs://QmTestGrantData",
             signature=b"test_signature",
-            is_active=True,
+            start_block=1000,  # New field
+            end_block=2000,  # New field
             file_ids=[999],
         )
         mock_fetch_permission.return_value = mock_permission_data
 
+        # Mock the grantee info to return the address that matches the signature
+        # The application_private_key above corresponds to this address
+        app_account = web3.eth.account.from_key(application_private_key)
+        mock_grantee_info = {
+            "owner": "0x1234567890123456789012345678901234567890",
+            "granteeAddress": app_account.address,
+            "publicKey": "test_public_key",
+            "permissionIds": [6],
+        }
+        mock_get_grantee_info.return_value = mock_grantee_info
+
         mock_grant_data = {
-            "grantee": "0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4",
+            "grantee": app_account.address,
             "operation": "llm_inference",
             "parameters": {"prompt": "Analyze this data: {{data}}"},
         }
