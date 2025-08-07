@@ -3,7 +3,7 @@ Contract ABIs for the data portability personal server.
 Single source of truth for all contract ABIs.
 """
 
-# DataPermissions ABI
+# DataPermissions ABI (updated for DataPortabilityPermissions)
 DATA_PERMISSIONS_ABI = [
     {
         "inputs": [
@@ -16,16 +16,18 @@ DATA_PERMISSIONS_ABI = [
                     {"internalType": "uint256", "name": "id", "type": "uint256"},
                     {"internalType": "address", "name": "grantor", "type": "address"},
                     {"internalType": "uint256", "name": "nonce", "type": "uint256"},
+                    {"internalType": "uint256", "name": "granteeId", "type": "uint256"},
                     {"internalType": "string", "name": "grant", "type": "string"},
                     {"internalType": "bytes", "name": "signature", "type": "bytes"},
-                    {"internalType": "bool", "name": "isActive", "type": "bool"},
+                    {"internalType": "uint256", "name": "startBlock", "type": "uint256"},
+                    {"internalType": "uint256", "name": "endBlock", "type": "uint256"},
                     {
                         "internalType": "uint256[]",
                         "name": "fileIds",
                         "type": "uint256[]",
                     },
                 ],
-                "internalType": "struct IDataPermissions.PermissionInfo",
+                "internalType": "struct IDataPortabilityPermissions.PermissionInfo",
                 "name": "",
                 "type": "tuple",
             }
@@ -76,12 +78,36 @@ DATA_REGISTRY_ABI = [
     },
 ]
 
+# DataPortabilityGrantees ABI
+DATA_PORTABILITY_GRANTEES_ABI = [
+    {
+        "inputs": [{"internalType": "uint256", "name": "granteeId", "type": "uint256"}],
+        "name": "grantees",
+        "outputs": [
+            {
+                "components": [
+                    {"internalType": "address", "name": "owner", "type": "address"},
+                    {"internalType": "address", "name": "granteeAddress", "type": "address"},
+                    {"internalType": "string", "name": "publicKey", "type": "string"},
+                    {"internalType": "uint256[]", "name": "permissionIds", "type": "uint256[]"},
+                ],
+                "internalType": "struct IDataPortabilityGrantees.GranteeInfo",
+                "name": "",
+                "type": "tuple",
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function",
+    }
+]
+
 
 def get_abi(contract_name: str) -> list:
     """Get ABI for a specific contract."""
     abi_map = {
         "DataPermissions": DATA_PERMISSIONS_ABI,
         "DataRegistry": DATA_REGISTRY_ABI,
+        "DataPortabilityGrantees": DATA_PORTABILITY_GRANTEES_ABI,
     }
 
     if contract_name not in abi_map:
