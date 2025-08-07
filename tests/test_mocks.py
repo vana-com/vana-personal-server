@@ -97,7 +97,6 @@ async def test_personal_server(
             nonce=1,
             grantee_id=1,  # New field
             grant="ipfs://QmTestGrantData",
-            signature=b"test_signature",
             start_block=1000,  # New field
             end_block=2000,  # New field
             file_ids=[999],

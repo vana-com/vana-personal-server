@@ -43,10 +43,9 @@ class DataPermissions:
                 nonce=permission_data[2],
                 grantee_id=permission_data[3],
                 grant=permission_data[4],
-                signature=permission_data[5],
-                start_block=permission_data[6],
-                end_block=permission_data[7],
-                file_ids=permission_data[8],
+                start_block=permission_data[5],
+                end_block=permission_data[6],
+                file_ids=permission_data[7],
             )
 
             # Log the parsed permission data with contract details

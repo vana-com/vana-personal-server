@@ -18,7 +18,6 @@ DATA_PERMISSIONS_ABI = [
                     {"internalType": "uint256", "name": "nonce", "type": "uint256"},
                     {"internalType": "uint256", "name": "granteeId", "type": "uint256"},
                     {"internalType": "string", "name": "grant", "type": "string"},
-                    {"internalType": "bytes", "name": "signature", "type": "bytes"},
                     {"internalType": "uint256", "name": "startBlock", "type": "uint256"},
                     {"internalType": "uint256", "name": "endBlock", "type": "uint256"},
                     {
