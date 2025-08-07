@@ -24,6 +24,13 @@
       "type": "integer",
       "minimum": 0,
       "description": "Optional Unix timestamp when grant expires (seconds since epoch per POSIX.1-2008)"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      },
+      "description": "Optional array of file IDs associated with this grant"
     }
   },
   "additionalProperties": false,
