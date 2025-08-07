@@ -27,8 +27,8 @@ CHAINS = {
 CONTRACTS = {
     "DataPermissions": {
         "addresses": {
-            MOKSHA.chain_id: "0x31fb1D48f6B2265A4cAD516BC39E96a18fb7c8de",
-            MAINNET.chain_id: "0x31fb1D48f6B2265A4cAD516BC39E96a18fb7c8de",
+            MOKSHA.chain_id: "0xD54523048AdD05b4d734aFaE7C68324Ebb7373eF",
+            MAINNET.chain_id: "0xD54523048AdD05b4d734aFaE7C68324Ebb7373eF",
         },
     },
     "DataRegistry": {

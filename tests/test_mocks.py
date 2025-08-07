@@ -94,9 +94,10 @@ async def test_personal_server(
             id=6,
             grantor="0x1234567890123456789012345678901234567890",
             nonce=1,
+            grantee_id=123,
             grant="ipfs://QmTestGrantData",
-            signature=b"test_signature",
-            is_active=True,
+            start_block=1000,
+            end_block=2000,
             file_ids=[999],
         )
         mock_fetch_permission.return_value = mock_permission_data

@@ -4,36 +4,67 @@ Single source of truth for all contract ABIs.
 """
 
 # DataPermissions ABI
-DATA_PERMISSIONS_ABI = [
-    {
-        "inputs": [
-            {"internalType": "uint256", "name": "permissionId", "type": "uint256"}
+DATA_PERMISSIONS_ABI = [{
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "permissionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "permissions",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "id",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "grantor",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "nonce",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "granteeId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "grant",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "startBlock",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "endBlock",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256[]",
+            "name": "fileIds",
+            "type": "uint256[]"
+          }
         ],
-        "name": "permissions",
-        "outputs": [
-            {
-                "components": [
-                    {"internalType": "uint256", "name": "id", "type": "uint256"},
-                    {"internalType": "address", "name": "grantor", "type": "address"},
-                    {"internalType": "uint256", "name": "nonce", "type": "uint256"},
-                    {"internalType": "string", "name": "grant", "type": "string"},
-                    {"internalType": "bytes", "name": "signature", "type": "bytes"},
-                    {"internalType": "bool", "name": "isActive", "type": "bool"},
-                    {
-                        "internalType": "uint256[]",
-                        "name": "fileIds",
-                        "type": "uint256[]",
-                    },
-                ],
-                "internalType": "struct IDataPermissions.PermissionInfo",
-                "name": "",
-                "type": "tuple",
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function",
-    }
-]
+        "internalType": "struct IDataPortabilityPermissions.PermissionInfo",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }]
 
 # DataRegistry ABI
 DATA_REGISTRY_ABI = [

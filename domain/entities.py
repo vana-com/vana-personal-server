@@ -44,9 +44,10 @@ class PermissionData:
     id: int
     grantor: str
     nonce: int
+    grantee_id: int
     grant: str
-    signature: bytes
-    is_active: bool
+    start_block: int
+    end_block: int
     file_ids: List[int]
 
 
