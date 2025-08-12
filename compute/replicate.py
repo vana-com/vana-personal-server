@@ -48,7 +48,7 @@ class ReplicatePredictionResponse:
 PROMPT_DATA_SEPARATOR = "-----" * 80 + "\n"
 
 # According to doc max context length for deepseek-v3 is 128K tokens.
-# However, according to different sources, the actual usable limit is arround 25k tokens
+# However, according to different sources, the actual usable limit is around 25k tokens
 # https://www.reddit.com/r/SillyTavernAI/comments/1k88xkz/is_the_actual_context_size_for_deepseek_models/
 # Using conservative estimate of 3 characters per token.
 # This is a safe middle-ground, as the actual ratio can vary (from ~4 for simple English to less for multilingual text).
