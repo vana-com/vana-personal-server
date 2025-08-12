@@ -47,10 +47,18 @@ class ReplicatePredictionResponse:
 
 PROMPT_DATA_SEPARATOR = "-----" * 80 + "\n"
 
+# According to doc max context length for deepseek-v3 is 128K tokens.
+# However, according to different sources, the actual usable limit is arround 25k tokens
+# https://www.reddit.com/r/SillyTavernAI/comments/1k88xkz/is_the_actual_context_size_for_deepseek_models/
+# Using conservative estimate of 3 characters per token.
+# This is a safe middle-ground, as the actual ratio can vary (from ~4 for simple English to less for multilingual text).
+# In case different models are used, this value should be adjusted accordingly.
+MAX_PROMPT_CHAR_LIMIT = 75000
+
 
 class ReplicateLlmInference(BaseCompute):
     """Replicate API provider for ML model inference."""
-    
+
     def __init__(self):
         self.settings = get_settings()
         self.client = replicate.Client(
@@ -71,18 +79,18 @@ class ReplicateLlmInference(BaseCompute):
             )
         except Exception as e:
             raise Exception(f"Failed to create prediction: {str(e)}")
-    
+
     def get(self, prediction_id: str) -> GetResponse:
         try:
             prediction = self.client.predictions.get(prediction_id)
             started_at = prediction.started_at if prediction.started_at else None
             finished_at = prediction.completed_at if prediction.completed_at else None
             result = prediction.output if prediction.output else None
-            
+
             # Convert list result to string if needed
             if isinstance(result, list):
                 result = ''.join(result)
-            
+
             return GetResponse(
                 id=prediction.id,
                 status=prediction.status,
@@ -92,7 +100,7 @@ class ReplicateLlmInference(BaseCompute):
             )
         except Exception as e:
             raise Exception(f"Failed to get prediction: {str(e)}")
-    
+
     def cancel(self, prediction_id: str) -> bool:
         """Cancel a running prediction."""
         try:
@@ -100,9 +108,9 @@ class ReplicateLlmInference(BaseCompute):
             prediction = self.client.predictions.cancel(prediction_id)
             return prediction.status == "canceled"
         except Exception:
-            return False 
-        
-    
+            return False
+
+
     def _build_prompt(self, grant_file: GrantFile, files_content: list[str]):
         prompt_template = grant_file.parameters.get("prompt", "")
         concatenated_data = (
@@ -111,5 +119,31 @@ class ReplicateLlmInference(BaseCompute):
             + "\n"
             + PROMPT_DATA_SEPARATOR
         )
+
+        # Calculate available space for data to not exceed the model's context limit
+        template_base_length = len(prompt_template.replace("{{data}}", ""))
+        available_space_for_data = MAX_PROMPT_CHAR_LIMIT - template_base_length
+
+        # Handle case where the prompt template itself is too long
+        if available_space_for_data <= 0:
+            logger.warning(
+                f"Prompt template is too long ({template_base_length} chars), exceeding the limit of {MAX_PROMPT_CHAR_LIMIT}. "
+                "No data will be included in the prompt."
+            )
+            concatenated_data = ""
+        # Truncate the data if it's too large to fit in the available space
+        elif len(concatenated_data) > available_space_for_data:
+            truncation_message = f"\n\n--- DATA TRUNCATED TO FIT MODEL'S CONTEXT WINDOW ---"
+            # Recalculate space considering the truncation message
+            available_space_for_data -= len(truncation_message)
+
+            if available_space_for_data > 0:
+                concatenated_data = concatenated_data[:available_space_for_data] + truncation_message
+                logger.warning(f"Input data was truncated to fit within the {MAX_PROMPT_CHAR_LIMIT} character limit.")
+            else:
+                # Not enough space for even a truncated message, send empty data
+                concatenated_data = ""
+                logger.warning("Prompt template is too long, no space for data or truncation message.")
+
         return prompt_template.replace("{{data}}", concatenated_data)
 
