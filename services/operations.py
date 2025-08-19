@@ -38,7 +38,7 @@ class OperationsService:
         self.data_permissions = DataPermissions(chain, self.web3)
         self.data_portability_grantees = DataPortabilityGrantees(chain, self.web3)
 
-    async def create(self, request_json: str, signature: str, request_id: str = None) -> ExecuteResponse:
+    async def create(self, request_json: str, signature: str, response_format: dict = None, request_id: str = None) -> ExecuteResponse:
         if not request_id:
             request_id = f"svc_req_{int(__import__('time').time() * 1000)}"
             
@@ -163,7 +163,9 @@ class OperationsService:
 
         try:
             logger.info(f"[SERVICE] Executing compute operation with {len(files_content)} decrypted files [RequestID: {request_id}]")
-            result = self.compute.execute(grant_file, files_content)
+            if response_format:
+                logger.info(f"[SERVICE] Using response format: {response_format} [RequestID: {request_id}]")
+            result = self.compute.execute(grant_file, files_content, response_format)
             logger.info(f"[SERVICE] Compute operation completed successfully, operation ID: {result.id} [RequestID: {request_id}]")
             return result
         except Exception as e:

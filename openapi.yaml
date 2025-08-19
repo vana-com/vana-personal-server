@@ -26,6 +26,17 @@ components:
       pattern: '^0x[a-fA-F0-9]{128}$'
       example: '0x04bcdf3e…'
 
+    ResponseFormat:
+      type: object
+      description: OpenAI-compatible response format configuration
+      properties:
+        type:
+          type: string
+          enum: [text, json_object]
+          default: text
+          description: The format type for the response. Use 'json_object' to enforce JSON output.
+          example: "json_object"
+
     CreateOperationRequest:
       type: object
       required: [app_signature, operation_request_json]
@@ -38,6 +49,9 @@ components:
           type: string
           description: The request JSON which contains permission_id
           example: "{\"permission_id\": 1024}"
+        response_format:
+          $ref: '#/components/schemas/ResponseFormat'
+          description: Optional response format configuration for controlling LLM output format
 
     CreateOperationResponse:
       type: object

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Optional, Dict, Any
 from domain.entities import GrantFile
 
 @dataclass
@@ -21,8 +22,15 @@ class BaseCompute(ABC):
     """Base interface for all compute providers."""
     
     @abstractmethod
-    def execute(self, grant_file: GrantFile, files_content: list[str]) -> ExecuteResponse:
-        """Create a new prediction/computation job based on the grant file and files content."""
+    def execute(self, grant_file: GrantFile, files_content: list[str], response_format: Optional[Dict[str, Any]] = None) -> ExecuteResponse:
+        """Create a new prediction/computation job based on the grant file and files content.
+        
+        Args:
+            grant_file: The grant file containing operation parameters
+            files_content: List of file contents to process
+            response_format: Optional OpenAI-compatible response format configuration
+                           e.g., {"type": "json_object"} to enforce JSON output
+        """
         pass
     
     @abstractmethod

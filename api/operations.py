@@ -40,9 +40,15 @@ async def create_operation(
 
     try:
         logger.info(f"[API] Calling operations_service.create() [RequestID: {request_id}]")
+        # Convert response_format to dict if provided
+        response_format_dict = request.response_format.model_dump() if request.response_format else None
+        if response_format_dict:
+            logger.info(f"[API] Response format specified: {response_format_dict} [RequestID: {request_id}]")
+        
         operation: ExecuteResponse = await operations_service.create(
             request_json=request.operation_request_json,
             signature=request.app_signature,
+            response_format=response_format_dict,
             request_id=request_id
         )
 

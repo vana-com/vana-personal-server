@@ -1,10 +1,13 @@
 import replicate
 import logging
-from typing import Dict, Any
+import time
+import json
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from .base import BaseCompute, ExecuteResponse, GetResponse
 from settings import get_settings
 from domain.entities import GrantFile
+from utils.json_mode import create_json_mode_handler, ResponseFormatConfig, ResponseFormat
 
 logger = logging.getLogger(__name__)
 
@@ -65,14 +68,33 @@ class ReplicateLlmInference(BaseCompute):
             api_token=self.settings.replicate_api_token
         )
         self.model_name = "deepseek-ai/deepseek-v3"
+        # Store response formats for predictions
+        self._prediction_formats: Dict[str, Dict[str, Any]] = {}
 
-    def execute(self, grant_file: GrantFile, files_content: list[str]) -> ExecuteResponse:
+    def execute(self, grant_file: GrantFile, files_content: list[str], response_format: Optional[Dict[str, Any]] = None) -> ExecuteResponse:
+        # Create JSON mode handler if needed
+        json_handler = create_json_mode_handler(response_format) if response_format else None
+        
+        # Build base prompt
         prompt = self._build_prompt(grant_file, files_content)
+        
+        # Modify prompt for JSON mode if needed
+        if json_handler and response_format and response_format.get("type") == "json_object":
+            prompt = json_handler.modify_prompt_for_json(prompt)
+            logger.info("Modified prompt to enforce JSON output mode")
+        
         try:
+            # Create prediction with potentially modified prompt
             prediction = self.client.predictions.create(
                 model=self.model_name,
                 input={"prompt": prompt}
             )
+            
+            # Store response format for this prediction if provided
+            if response_format:
+                self._prediction_formats[prediction.id] = response_format
+                logger.info(f"Stored response format for prediction {prediction.id}: {response_format}")
+            
             return ExecuteResponse(
                 id=prediction.id,
                 created_at=prediction.created_at
@@ -90,6 +112,36 @@ class ReplicateLlmInference(BaseCompute):
             # Convert list result to string if needed
             if isinstance(result, list):
                 result = ''.join(result)
+
+            # Check if this prediction has a stored response format
+            response_format = self._prediction_formats.get(prediction_id)
+            
+            # Process result based on response format if completed
+            if result is not None and response_format and prediction.status == "succeeded":
+                json_handler = create_json_mode_handler(response_format)
+                if response_format.get("type") == "json_object":
+                    # Process JSON response
+                    processed_result, error = json_handler.process_response(result)
+                    
+                    if isinstance(processed_result, dict):
+                        # Successfully parsed JSON - convert back to string for storage
+                        result = json.dumps(processed_result)
+                        logger.info(f"Successfully processed JSON response for prediction {prediction_id}")
+                    elif error:
+                        # JSON parsing failed - log error but return original result
+                        logger.error(f"Failed to parse JSON response for prediction {prediction_id}: {error}")
+                        # Note: In a production system, you might want to handle this differently
+                        # For now, we'll return the original response with a wrapper indicating the error
+                        error_wrapper = {
+                            "error": "json_parse_failed",
+                            "error_message": error,
+                            "raw_response": result[:1000] if len(result) > 1000 else result
+                        }
+                        result = json.dumps(error_wrapper)
+                
+            # Clean up stored format after terminal states
+            if prediction.status in ["succeeded", "failed", "canceled"]:
+                self._prediction_formats.pop(prediction_id, None)
 
             return GetResponse(
                 id=prediction.id,
