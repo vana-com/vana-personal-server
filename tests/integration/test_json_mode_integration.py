@@ -37,10 +37,12 @@ class TestReplicateLlmInferenceJSONMode:
         grant_file = GrantFile(
             grantee="0x123",
             operation="llm_inference",
-            parameters={"prompt": "Analyze this data: {{data}}"}
+            parameters={
+                "prompt": "Analyze this data: {{data}}",
+                "response_format": {"type": "json_object"}
+            }
         )
         files_content = ["file1 content", "file2 content"]
-        response_format = {"type": "json_object"}
         
         # Mock prediction response
         mock_prediction = Mock()
@@ -49,7 +51,7 @@ class TestReplicateLlmInferenceJSONMode:
         mock_client.predictions.create.return_value = mock_prediction
         
         # Execute
-        result = llm_inference.execute(grant_file, files_content, response_format)
+        result = llm_inference.execute(grant_file, files_content)
         
         # Verify
         assert result.id == "test-prediction-123"
@@ -62,7 +64,7 @@ class TestReplicateLlmInferenceJSONMode:
         assert "JSON.parse()" in prompt
         
         # Check that response format was stored
-        assert llm_inference._prediction_formats["test-prediction-123"] == response_format
+        assert llm_inference._prediction_formats["test-prediction-123"] == {"type": "json_object"}
 
     def test_execute_without_json_mode(self, llm_inference, mock_client):
         """Test execute method without JSON mode (text mode)."""
@@ -293,11 +295,13 @@ class TestReplicateLlmInferenceJSONMode:
         grant_file = GrantFile(
             grantee="0x123",
             operation="llm_inference",
-            parameters={"prompt": "Analyze: {{data}}"}
+            parameters={
+                "prompt": "Analyze: {{data}}",
+                "response_format": {"type": "json_object"}
+            }
         )
         # Create very large content that will be truncated
         files_content = ["x" * 100000]  # Very large content
-        response_format = {"type": "json_object"}
         
         # Mock prediction response
         mock_prediction = Mock()
@@ -306,7 +310,7 @@ class TestReplicateLlmInferenceJSONMode:
         mock_client.predictions.create.return_value = mock_prediction
         
         # Execute
-        result = llm_inference.execute(grant_file, files_content, response_format)
+        result = llm_inference.execute(grant_file, files_content)
         
         # Verify
         assert result.id == "test-prediction-truncate"

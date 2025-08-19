@@ -71,7 +71,10 @@ class ReplicateLlmInference(BaseCompute):
         # Store response formats for predictions
         self._prediction_formats: Dict[str, Dict[str, Any]] = {}
 
-    def execute(self, grant_file: GrantFile, files_content: list[str], response_format: Optional[Dict[str, Any]] = None) -> ExecuteResponse:
+    def execute(self, grant_file: GrantFile, files_content: list[str]) -> ExecuteResponse:
+        # Extract response_format from grant file parameters
+        response_format = grant_file.parameters.get("response_format")
+        
         # Create JSON mode handler if needed
         json_handler = create_json_mode_handler(response_format) if response_format else None
         

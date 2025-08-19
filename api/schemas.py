@@ -28,19 +28,9 @@ class IdentityResponseModel(BaseModel):
     user_address: EthereumAddress
     personal_server: PersonalServerModel
 
-class ResponseFormat(BaseModel):
-    type: Literal["text", "json_object"] = Field(
-        default="text",
-        description="The format type for the response. Use 'json_object' to enforce JSON output."
-    )
-
 class CreateOperationRequest(BaseModel):
     app_signature: str
     operation_request_json: str
-    response_format: Optional[ResponseFormat] = Field(
-        default=None,
-        description="Optional response format configuration for controlling LLM output format"
-    )
 
 class CreateOperationResponse(BaseModel):
     kind: str = Field(default="OperationCreated", description="Resource type identifier")
