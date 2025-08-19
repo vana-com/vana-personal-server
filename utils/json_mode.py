@@ -1,17 +1,21 @@
 """
 JSON Mode support for LLM responses - OpenAI-compatible implementation.
 
-Provides utilities for enforcing JSON output from LLMs through prompt engineering,
-validation, and retry logic with exponential backoff.
+Provides utilities for enforcing JSON output from LLMs through prompt engineering
+and validation. Uses json_repair library for robust JSON extraction and fixing.
 """
 
-import json
-import re
-import time
 import logging
 from typing import Any, Dict, Optional, Tuple, Union
 from dataclasses import dataclass
 from enum import Enum
+
+try:
+    import json_repair
+except ImportError:
+    raise ImportError(
+        "json_repair is required for JSON mode. Install it with: pip install json-repair"
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +39,18 @@ class JSONModeHandler:
     
     Implements OpenAI-compatible JSON mode with:
     - Prompt modification to enforce JSON output
-    - Response validation and extraction
+    - Response validation and extraction using json_repair
     - Comprehensive error handling
     
-    Note: Retry logic should be implemented at the API call level,
-    not in this handler. This handler only deals with single responses.
+    The json_repair library handles:
+    - Markdown code blocks
+    - Comments in JSON
+    - Missing quotes, commas, brackets
+    - Malformed JSON structures
+    - Multiple JSON objects (takes first valid one)
     """
     
-    # Prompt suffixes for enforcing JSON output
+    # Prompt suffix for enforcing JSON output
     JSON_ENFORCE_PROMPT = """
 
 CRITICAL REQUIREMENT: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks. Your entire response must be a single valid JSON object that can be parsed by JSON.parse().
@@ -56,10 +64,6 @@ Example of INCORRECT formats:
 - {"key": "value"} // comments not allowed
 
 Remember: Output ONLY the raw JSON object, nothing else."""
-    
-    JSON_RETRY_PROMPT = """
-
-Your previous response was not valid JSON. Please try again and ensure you output ONLY a valid JSON object with no additional text, markdown, or formatting. The response must start with '{' and end with '}' and be parseable by standard JSON parsers."""
     
     def __init__(self, config: Optional[ResponseFormatConfig] = None):
         """
@@ -84,13 +88,17 @@ Your previous response was not valid JSON. Please try again and ensure you outpu
     
     def extract_json_from_response(self, response: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """
-        Extract and validate JSON from LLM response.
+        Extract and validate JSON from LLM response using json_repair.
         
-        Handles common issues like:
+        The json_repair library automatically handles:
         - Markdown code blocks
-        - Explanatory text before/after JSON
         - Comments in JSON
-        - Malformed JSON
+        - Missing quotes, commas, brackets
+        - Trailing commas
+        - Unquoted keys
+        - Multiple JSON objects
+        - Escaped characters
+        - And many other common JSON issues
         
         Args:
             response: Raw LLM response
@@ -103,158 +111,32 @@ Your previous response was not valid JSON. Please try again and ensure you outpu
         if not response or not isinstance(response, str):
             return None, "Response is empty or not a string"
         
-        # Track the original response for logging
-        original_response = response
-        response = response.strip()
-        
-        # Strategy 1: Try parsing as-is (best case: pure JSON)
         try:
-            parsed = json.loads(response)
-            if isinstance(parsed, dict):
-                logger.info("Successfully parsed pure JSON response")
-                return parsed, None
-            else:
+            # json_repair handles all the edge cases for us
+            # It will find and fix JSON even if it's wrapped in markdown,
+            # has comments, missing quotes, etc.
+            parsed = json_repair.loads(response)
+            
+            # Ensure we got a dictionary (not a list or primitive)
+            if not isinstance(parsed, dict):
                 return None, f"Response is valid JSON but not an object: {type(parsed).__name__}"
-        except json.JSONDecodeError as e:
-            logger.debug(f"Direct JSON parse failed: {str(e)}")
-        
-        # Strategy 2: Remove markdown code blocks
-        markdown_patterns = [
-            r'```json\s*([\s\S]*?)\s*```',
-            r'```\s*([\s\S]*?)\s*```',
-            r'`([^`]+)`'
-        ]
-        
-        for pattern in markdown_patterns:
-            matches = re.findall(pattern, response, re.MULTILINE)
-            if matches:
-                # Try the first match
-                potential_json = matches[0] if isinstance(matches[0], str) else matches[0][0]
-                try:
-                    parsed = json.loads(potential_json)
-                    if isinstance(parsed, dict):
-                        logger.info(f"Successfully extracted JSON from markdown block")
-                        return parsed, None
-                except json.JSONDecodeError:
-                    continue
-        
-        # Strategy 3: Use raw_decode to find first valid JSON object
-        # This properly handles strings with braces, escaped quotes, etc.
-        decoder = json.JSONDecoder()
-        
-        # Collect all valid JSON objects found, prefer non-empty ones
-        found_objects = []
-        
-        # Try to find where JSON might start (look for '{')
-        idx = 0
-        while idx < len(response):
-            # Find next potential JSON object start
-            next_brace = response.find('{', idx)
-            if next_brace == -1:
-                break
             
-            # First try without any preprocessing
-            try:
-                obj, end_idx = decoder.raw_decode(response, next_brace)
-                if isinstance(obj, dict):
-                    found_objects.append((obj, next_brace))
-                    # If we found a non-empty object, return it immediately
-                    if obj:
-                        logger.info(f"Successfully extracted JSON using raw_decode at position {next_brace}")
-                        return obj, None
-                    # Continue searching for better options
-                    idx = end_idx
-                    continue
-            except json.JSONDecodeError:
-                pass
+            logger.info("Successfully extracted and repaired JSON from response")
+            return parsed, None
             
-            # If that failed, try removing comments from this potential JSON
-            # Find the likely end of this JSON object (being aware of strings)
-            brace_count = 0
-            in_string = False
-            escape_next = False
-            potential_end = next_brace
+        except Exception as e:
+            # json_repair returns an empty dict {} if the JSON is completely broken
+            # We treat this as an error if strict validation is enabled
+            error_msg = f"Failed to extract valid JSON from response: {str(e)}"
+            logger.error(error_msg)
             
-            for i in range(next_brace, len(response)):
-                char = response[i]
-                
-                if escape_next:
-                    escape_next = False
-                    continue
-                    
-                if char == '\\':
-                    escape_next = True
-                    continue
-                    
-                if char == '"' and not escape_next:
-                    in_string = not in_string
-                    continue
-                
-                if not in_string:
-                    if char == '{':
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            potential_end = i + 1
-                            break
+            # Log first 500 chars of response for debugging
+            if len(response) < 500:
+                logger.debug(f"Response: {response}")
+            else:
+                logger.debug(f"Response (first 500 chars): {response[:500]}...")
             
-            if potential_end > next_brace and brace_count == 0:
-                potential_json = response[next_brace:potential_end]
-                # Remove comments
-                cleaned = re.sub(r'//.*?$', '', potential_json, flags=re.MULTILINE)
-                cleaned = re.sub(r'/\*.*?\*/', '', cleaned, flags=re.DOTALL)
-                
-                try:
-                    obj = json.loads(cleaned)
-                    if isinstance(obj, dict):
-                        logger.info(f"Successfully extracted JSON after comment removal at position {next_brace}")
-                        return obj, None
-                except json.JSONDecodeError:
-                    pass
-            
-            # Move past this '{' and continue searching
-            idx = next_brace + 1
-        
-        # If we only found empty objects, return the first one
-        if found_objects and not any(obj for obj, _ in found_objects if obj):
-            logger.info(f"Only found empty JSON objects, returning first at position {found_objects[0][1]}")
-            return found_objects[0][0], None
-        
-        # Strategy 4: Try to fix common JSON issues and retry
-        # Look for anything that might be JSON-like
-        json_like_match = re.search(r'\{[^{}]*\}', response)
-        if json_like_match:
-            potential_json = json_like_match.group(0)
-            
-            # Fix single quotes (convert to double quotes)
-            fixed_json = re.sub(r"'([^']*)'", r'"\1"', potential_json)
-            
-            # Fix unquoted keys (simple heuristic)
-            fixed_json = re.sub(r'(\w+):', r'"\1":', fixed_json)
-            
-            # Remove any remaining ellipsis
-            fixed_json = re.sub(r'\.\.\.', '""', fixed_json)
-            
-            # Remove trailing commas
-            fixed_json = re.sub(r',\s*([}\]])', r'\1', fixed_json)
-            
-            try:
-                parsed = json.loads(fixed_json)
-                if isinstance(parsed, dict):
-                    logger.info("Successfully parsed JSON after applying fixes")
-                    return parsed, None
-            except json.JSONDecodeError as e:
-                logger.debug(f"Fixed JSON parse failed: {str(e)}")
-        
-        # All strategies failed
-        error_msg = f"Failed to extract valid JSON from response. Response length: {len(original_response)} chars"
-        if len(original_response) < 500:
-            error_msg += f"\nResponse: {original_response}"
-        else:
-            error_msg += f"\nResponse (first 500 chars): {original_response[:500]}..."
-        
-        return None, error_msg
+            return None, error_msg
     
     def validate_json_response(self, json_obj: Dict[str, Any]) -> bool:
         """
@@ -270,15 +152,13 @@ Your previous response was not valid JSON. Please try again and ensure you outpu
             logger.error(f"JSON response is not an object: {type(json_obj).__name__}")
             return False
         
-        if not json_obj:
-            logger.error("JSON response is an empty object")
-            return False if self.config.strict_validation else True
-        
-        # Additional validation can be added here based on requirements
-        # For now, we just ensure it's a non-empty dict
+        # If strict validation is enabled, don't accept empty objects
+        # (json_repair returns {} for completely broken JSON)
+        if self.config.strict_validation and not json_obj:
+            logger.error("JSON response is an empty object (possibly due to repair failure)")
+            return False
         
         return True
-    
     
     def process_response(self, response: str) -> Tuple[Union[Dict[str, Any], str], Optional[str]]:
         """
