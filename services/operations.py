@@ -3,7 +3,7 @@ import logging
 
 from web3 import AsyncWeb3
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
-from domain.entities import FileMetadata
+from domain.entities import FileMetadata, GrantFile
 from domain.value_objects import PersonalServerRequest
 from eth_account.messages import encode_defunct
 from domain.exceptions import (
