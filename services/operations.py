@@ -3,7 +3,7 @@ import logging
 
 from web3 import AsyncWeb3
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
-from domain.entities import FileMetadata
+from domain.entities import FileMetadata, GrantFile
 from domain.value_objects import PersonalServerRequest
 from eth_account.messages import encode_defunct
 from domain.exceptions import (
@@ -143,6 +143,13 @@ class OperationsService:
             logger.error(f"[SERVICE] Grant validation failed: {str(e)} [RequestID: {request_id}]")
             logger.error(f"[SERVICE] On-chain grantee: {on_chain_grantee_address}, Grant size: {len(raw_grant_file)} bytes [RequestID: {request_id}]")
             raise GrantValidationError(f"Grant validation failed: {str(e)}")
+
+        # Validate response_format parameter if present
+        try:
+            self._validate_response_format(grant_file, request_id)
+        except Exception as e:
+            logger.error(f"[SERVICE] Response format validation failed: {str(e)} [RequestID: {request_id}]")
+            raise ValidationError(f"Invalid response_format in grant file: {str(e)}")
 
         try:
             logger.info(f"[SERVICE] Deriving server keys for grantor: {permission.grantor} [RequestID: {request_id}]")
@@ -289,3 +296,47 @@ class OperationsService:
                     )
 
         return files_content
+
+    def _validate_response_format(self, grant_file: GrantFile, request_id: str = None):
+        """Validate response_format parameter in grant file.
+        
+        Args:
+            grant_file: The grant file to validate
+            request_id: Request ID for logging
+            
+        Raises:
+            ValidationError: If response_format is invalid or not allowed for this operation
+        """
+        if not request_id:
+            request_id = f"validate_{int(__import__('time').time() * 1000)}"
+        
+        response_format = grant_file.parameters.get("response_format")
+        
+        # If no response_format is specified, that's fine - defaults to text mode
+        if response_format is None:
+            logger.debug(f"[SERVICE] No response_format specified, defaulting to text mode [RequestID: {request_id}]")
+            return
+        
+        # response_format is only valid for llm_inference operations
+        if grant_file.operation != "llm_inference":
+            logger.error(f"[SERVICE] response_format specified for non-LLM operation: {grant_file.operation} [RequestID: {request_id}]")
+            raise ValidationError(f"response_format is only valid for llm_inference operations, not {grant_file.operation}")
+        
+        # Validate response_format structure
+        if not isinstance(response_format, dict):
+            logger.error(f"[SERVICE] response_format must be a dict, got {type(response_format)} [RequestID: {request_id}]")
+            raise ValidationError(f"response_format must be an object, got {type(response_format).__name__}")
+        
+        # Validate required 'type' field
+        format_type = response_format.get("type")
+        if not format_type:
+            logger.error(f"[SERVICE] response_format missing required 'type' field [RequestID: {request_id}]")
+            raise ValidationError("response_format must include a 'type' field")
+        
+        # Validate type value
+        valid_types = ["text", "json_object"]
+        if format_type not in valid_types:
+            logger.error(f"[SERVICE] Invalid response_format type: {format_type}, valid types: {valid_types} [RequestID: {request_id}]")
+            raise ValidationError(f"response_format.type must be one of {valid_types}, got '{format_type}'")
+        
+        logger.info(f"[SERVICE] Response format validation successful: {response_format} [RequestID: {request_id}]")

@@ -36,7 +36,10 @@ components:
           example: "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
         operation_request_json:
           type: string
-          description: The request JSON which contains permission_id
+          description: |
+            The request JSON which contains permission_id. 
+            The operation type and parameters are defined in the grant file 
+            referenced by the blockchain permission.
           example: "{\"permission_id\": 1024}"
 
     CreateOperationResponse:
@@ -143,6 +146,81 @@ components:
           description: Field name when error is related to a specific input field
           example: "permission_id"
 
+    # Grant File Schemas - these represent the signed grant file structure
+    ResponseFormat:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text, json_object]
+          description: The response format type
+          example: "json_object"
+      description: Response format specification for LLM operations
+
+    BaseGrantFile:
+      type: object
+      required: [grantee, operation, parameters]
+      properties:
+        grantee:
+          $ref: '#/components/schemas/EthereumAddress'
+        operation:
+          type: string
+          description: The type of operation to perform
+        parameters:
+          type: object
+          description: Operation-specific parameters
+        expires:
+          type: integer
+          minimum: 0
+          description: Optional Unix timestamp when grant expires
+          example: 1736467579
+      discriminator:
+        propertyName: operation
+        mapping:
+          llm_inference: '#/components/schemas/LLMInferenceGrantFile'
+
+    LLMInferenceGrantFile:
+      allOf:
+        - $ref: '#/components/schemas/BaseGrantFile'
+        - type: object
+          properties:
+            operation:
+              type: string
+              enum: [llm_inference]
+              example: "llm_inference"
+            parameters:
+              type: object
+              required: [prompt]
+              properties:
+                prompt:
+                  type: string
+                  description: The prompt template with {{data}} placeholder
+                  example: "Analyze this data: {{data}}"
+                response_format:
+                  $ref: '#/components/schemas/ResponseFormat'
+              additionalProperties: true
+              description: LLM inference parameters
+
+    GrantFile:
+      oneOf:
+        - $ref: '#/components/schemas/LLMInferenceGrantFile'
+        # Future operations will be added here as additional oneOf options
+      discriminator:
+        propertyName: operation
+      description: |
+        Grant file structure that defines the operation and its parameters.
+        The grant file is cryptographically signed and contains the user's intent.
+        
+        **Currently Supported Operations:**
+        - `llm_inference`: Large Language Model inference with optional JSON mode
+        
+        **Future Operations:**
+        Additional operation types will be added as the platform expands.
+        
+        **JSON Mode (LLM only):**
+        When `response_format.type` is `json_object`, the LLM will output valid JSON.
+
     ValidationErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
@@ -226,6 +304,37 @@ paths:
       description: |
         Creates a new operation with the provided request data and signature.
         
+        **How it works:**
+        1. The `permission_id` in the request references a blockchain permission
+        2. The permission contains a link to a grant file (stored on IPFS)
+        3. The grant file defines the operation type and parameters
+        4. The grant file is cryptographically signed by the grantee
+        
+        **Grant File Examples:**
+        
+        *LLM Inference with JSON mode:*
+        ```json
+        {
+          "grantee": "0x123...",
+          "operation": "llm_inference",
+          "parameters": {
+            "prompt": "Analyze this data: {{data}}",
+            "response_format": {"type": "json_object"}
+          }
+        }
+        ```
+        
+        *LLM Inference with text mode (default):*
+        ```json
+        {
+          "grantee": "0x123...", 
+          "operation": "llm_inference",
+          "parameters": {
+            "prompt": "Summarize this content: {{data}}"
+          }
+        }
+        ```
+        
         **Possible Errors:**
         - `400 VALIDATION_ERROR`: Invalid request format or missing required fields
         - `400 VALIDATION_ERROR_PERMISSION_ID`: Invalid or missing permission ID
@@ -244,6 +353,19 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/CreateOperationRequest' }
+            examples:
+              llm_json_mode:
+                summary: LLM Inference with JSON Mode
+                description: Request for LLM inference with JSON mode (defined in grant file)
+                value:
+                  app_signature: "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+                  operation_request_json: "{\"permission_id\": 1024}"
+              llm_text_mode:
+                summary: LLM Inference with Text Mode  
+                description: Request for LLM inference with default text output (defined in grant file)
+                value:
+                  app_signature: "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+                  operation_request_json: "{\"permission_id\": 2048}"
       responses:
         "202":
           description: Accepted — operation handle returned.
