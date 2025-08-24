@@ -28,13 +28,10 @@ RUN npm ci --only=production
 RUN poetry config virtualenvs.create false \
     && poetry install --only main --no-interaction --no-ansi
 
-# 4. Copy the rest of the application source code
+# 4. Copy the rest of the application source code with proper ownership
 # This is FAST because .dockerignore excludes node_modules, .git, etc.
-COPY . .
-
-# 5. Change ownership of the entire app directory
-# This is now MUCH faster because node_modules is not being chowned
-RUN chown -R appuser:appuser /app
+# Using --chown flag to set ownership during copy (no separate chown needed!)
+COPY --chown=appuser:appuser . .
 
 # 6. Switch to the non-root user for running the application
 USER appuser
