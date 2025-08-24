@@ -201,9 +201,9 @@ class DockerAgentRunner:
         
         # If stdin_file provided, pipe it to the command
         if stdin_file:
+            # Debug: Check what's actually in the mounted directory
             # Use cat to pipe the file content to the command's stdin
-            # The file is in the current working directory, use relative path
-            full_command = ["sh", "-c", f"cat .stdin_input | {command} {escaped_args}"]
+            full_command = ["sh", "-c", f"ls -la /workspace/agent-work/ && cat .stdin_input | {command} {escaped_args}"]
         else:
             full_command = ["sh", "-c", f"{command} {escaped_args}"]
         
