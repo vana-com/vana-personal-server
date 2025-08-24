@@ -23,6 +23,7 @@ class QwenCodeAgentProvider(BaseAgentProvider):
     
     CLI_NAME = "qwen"
     AGENT_TYPE = "qwen"
+    REQUIRES_NETWORK = True  # Qwen needs network for API or tool access
     
     def __init__(self):
         super().__init__()

@@ -33,6 +33,7 @@ class BaseAgentProvider(BaseCompute, ABC):
     # Subclasses should override these
     CLI_NAME = "agent"
     AGENT_TYPE = "base"
+    REQUIRES_NETWORK = False  # Set to True for agents that need API access
     
     def __init__(self, task_store=None, artifact_storage=None, docker_runner=None):
         """
@@ -76,7 +77,8 @@ class BaseAgentProvider(BaseCompute, ABC):
                 memory_limit=settings.docker_agent_memory_limit,
                 timeout_sec=settings.docker_agent_timeout_sec,
                 max_output_bytes=settings.docker_agent_max_output_mb * 1_000_000,
-                cpu_limit=settings.docker_agent_cpu_limit or "1.0"
+                cpu_limit=settings.docker_agent_cpu_limit or "1.0",
+                allow_network=self.REQUIRES_NETWORK  # Pass network requirement
             )
         return self._docker_runner
     
@@ -262,7 +264,7 @@ class BaseAgentProvider(BaseCompute, ABC):
                 
                 # Execute agent
                 result = await self._execute_cli(
-                    command, args, workspace, operation_id
+                    command, args, workspace, operation_id, prompt
                 )
                 
                 # Process artifacts
@@ -294,7 +296,8 @@ class BaseAgentProvider(BaseCompute, ABC):
         command: str, 
         args: List[str], 
         workspace: str,
-        operation_id: str
+        operation_id: str,
+        prompt: str = None
     ) -> Dict:
         """Execute CLI command in secure Docker container."""
         # Convert workspace files to the format expected by Docker runner
@@ -309,6 +312,13 @@ class BaseAgentProvider(BaseCompute, ABC):
         # Get environment variables for the agent
         env_vars = self.get_env_overrides()
         
+        # Determine if we should use stdin for the prompt
+        # Gemini CLI works better with stdin for long prompts
+        stdin_input = None
+        if self.AGENT_TYPE == "gemini" and prompt:
+            stdin_input = prompt
+            logger.debug(f"[{self.AGENT_TYPE}] Using stdin for prompt (length: {len(prompt)})")
+        
         # Execute in Docker container with streaming
         result = await self.docker_runner.execute_agent(
             agent_type=self.AGENT_TYPE,
@@ -317,7 +327,8 @@ class BaseAgentProvider(BaseCompute, ABC):
             workspace_files=workspace_files,
             env_vars=env_vars,
             operation_id=operation_id,
-            task_store=self._task_store  # Enable streaming logs
+            task_store=self._task_store,  # Enable streaming logs
+            stdin_input=stdin_input  # Pass prompt via stdin if needed
         )
         
         return result

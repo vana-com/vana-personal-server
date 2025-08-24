@@ -23,6 +23,7 @@ class GeminiAgentProvider(BaseAgentProvider):
     
     CLI_NAME = "gemini"
     AGENT_TYPE = "gemini"
+    REQUIRES_NETWORK = True  # Gemini needs to reach Google's API
     
     def __init__(self):
         super().__init__()
@@ -53,8 +54,9 @@ class GeminiAgentProvider(BaseAgentProvider):
     
     def get_cli_args(self, prompt: str) -> List[str]:
         """Get CLI arguments for Gemini CLI."""
-        # Use -y (yolo mode) and -p for prompt mode to enable write tools
-        return ["-y", "-p", prompt]
+        # Use -y (yolo mode) to enable write tools
+        # Prompt will be passed via stdin to handle long inputs
+        return ["-y"]
     
     def build_prompt(self, goal: str, files_dict: Dict[str, bytes] = None) -> str:
         """Build a prompt for Gemini CLI that requests artifacts."""
@@ -93,6 +95,7 @@ class GeminiAgentProvider(BaseAgentProvider):
             env_vars.update({
                 "GEMINI_API_KEY": self.api_key,
             })
+            logger.debug(f"Setting GEMINI_API_KEY in environment (key length: {len(self.api_key)})")
             
             # Add Vertex AI flag if enabled
             if self.use_vertex_ai:

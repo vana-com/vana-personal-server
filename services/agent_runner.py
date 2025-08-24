@@ -44,7 +44,8 @@ class DockerAgentRunner:
         memory_limit: str = "512m",
         timeout_sec: int = 300,
         max_output_bytes: int = 2_000_000,
-        cpu_limit: str = "1.0"
+        cpu_limit: str = "1.0",
+        allow_network: bool = False
     ):
         """
         Initialize Docker agent runner.
@@ -55,12 +56,14 @@ class DockerAgentRunner:
             timeout_sec: Execution timeout in seconds
             max_output_bytes: Maximum output capture size
             cpu_limit: CPU limit (e.g., "0.5", "1.0", "2.0")
+            allow_network: Allow network access (needed for API calls)
         """
         self.image_name = image_name
         self.memory_limit = memory_limit
         self.timeout_sec = timeout_sec
         self.max_output_bytes = max_output_bytes
         self.cpu_limit = cpu_limit
+        self.allow_network = allow_network
         
         # Initialize Docker client
         try:
@@ -80,7 +83,8 @@ class DockerAgentRunner:
         workspace_files: Dict[str, bytes],
         env_vars: Dict[str, str],
         operation_id: str,
-        task_store=None  # Optional task store for streaming logs
+        task_store=None,  # Optional task store for streaming logs
+        stdin_input: Optional[str] = None  # Optional stdin input for long prompts
     ) -> Dict[str, Any]:
         """
         Execute agent in secure Docker container.
@@ -92,6 +96,7 @@ class DockerAgentRunner:
             workspace_files: Files to mount in workspace {filename: content}
             env_vars: Environment variables for agent
             operation_id: Operation identifier for logging
+            stdin_input: Optional input to pass via stdin (for long prompts)
             
         Returns:
             Execution result with status, output, artifacts, and logs
@@ -110,9 +115,16 @@ class DockerAgentRunner:
                 # Stage workspace files
                 self._stage_workspace_files(workspace_path, workspace_files)
                 
+                # If stdin_input provided, write it to a file for piping
+                stdin_file = None
+                if stdin_input:
+                    stdin_file = workspace_path / ".stdin_input"
+                    stdin_file.write_text(stdin_input, encoding='utf-8')
+                
                 # Execute in container with optional streaming
                 result = await self._run_container(
-                    agent_type, command, args, workspace_path, home_path, env_vars, operation_id, task_store
+                    agent_type, command, args, workspace_path, home_path, env_vars, 
+                    operation_id, task_store, stdin_file
                 )
                 
                 # Process artifacts from workspace
@@ -155,7 +167,8 @@ class DockerAgentRunner:
         home_path: Path,
         env_vars: Dict[str, str],
         operation_id: str,
-        task_store=None
+        task_store=None,
+        stdin_file: Optional[Path] = None
     ) -> Dict[str, Any]:
         """
         Run agent command in secure Docker container.
@@ -171,7 +184,17 @@ class DockerAgentRunner:
         # Use shlex to properly escape arguments for shell
         import shlex
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
-        full_command = ["sh", "-c", f"{command} {escaped_args}"]
+        
+        # If stdin_file provided, pipe it to the command
+        if stdin_file:
+            # Use cat to pipe the file content to the command's stdin
+            full_command = ["sh", "-c", f"cat .stdin_input | {command} {escaped_args}"]
+        else:
+            full_command = ["sh", "-c", f"{command} {escaped_args}"]
+        
+        # Determine network mode based on agent requirements
+        # Allow network for agents that need API access, otherwise isolate
+        network_mode = "bridge" if self.allow_network else "none"
         
         # Prepare secure container configuration
         container_config = {
@@ -183,7 +206,7 @@ class DockerAgentRunner:
                 str(workspace_path): {"bind": "/workspace/agent-work", "mode": "rw"},
                 str(home_path): {"bind": "/home/appuser", "mode": "rw"}
             },
-            "network_mode": "none",  # Complete network isolation
+            "network_mode": network_mode,  # Conditional network access
             "user": "appuser",       # Non-root execution
             "read_only": True,       # Read-only container filesystem
             "mem_limit": self.memory_limit,  # Memory constraint
@@ -194,6 +217,8 @@ class DockerAgentRunner:
         
         logger.info(f"[DOCKER-{agent_type}] Starting container for {operation_id}")
         logger.debug(f"[DOCKER-{agent_type}] Command: {' '.join(full_command)}")
+        logger.debug(f"[DOCKER-{agent_type}] Network mode: {network_mode}")
+        logger.debug(f"[DOCKER-{agent_type}] Has stdin: {stdin_file is not None}")
         
         try:
             # Run container asynchronously with streaming if task_store provided
