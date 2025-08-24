@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  personal-server:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      # Core configuration
+      - WALLET_MNEMONIC=${WALLET_MNEMONIC:-test test test test test test test test test test test junk}
+      - CHAIN_ID=${CHAIN_ID:-1337}
+      - RPC_URL=${RPC_URL:-http://localhost:8545}
+      - DATA_REGISTRY_ADDRESS=${DATA_REGISTRY_ADDRESS:-0x0000000000000000000000000000000000000000}
+      - DATA_PERMISSIONS_ADDRESS=${DATA_PERMISSIONS_ADDRESS:-0x0000000000000000000000000000000000000000}
+      
+      # Enable mock mode for local testing
+      - MOCK_MODE=${MOCK_MODE:-true}
+      
+      # Replicate API token (required but not used in mock mode)
+      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN:-mock-token-for-testing}
+      
+      # Agent configuration (development mode - using OAuth)
+      - QWEN_TIMEOUT_SEC=180
+      - QWEN_MAX_STDOUT_MB=2
+      - GEMINI_TIMEOUT_SEC=180
+      - GEMINI_MAX_STDOUT_MB=2
+      
+      # Cloudflare R2 Configuration (optional - falls back to local storage)
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID:-}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-personal-server-artifacts}
+      
+      # For production mode, uncomment and set these:
+      # - QWEN_API_KEY=${QWEN_API_KEY}
+      # - QWEN_API_URL=${QWEN_API_URL:-https://api.qwen.ai/v1}
+      # - QWEN_MODEL_NAME=${QWEN_MODEL_NAME:-qwen-coder-32b}
+      # - GEMINI_API_KEY=${GEMINI_API_KEY}
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      
+      # Disable rate limiting for local testing
+      - RATE_LIMIT_ENABLED=false
+      
+    volumes:
+      # Mount local directory for development
+      - ./:/app
+      # Mount docker socket if agents need to spawn containers
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - personal-server-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/identity?address=0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Local blockchain for testing
+  local-blockchain:
+    image: trufflesuite/ganache:latest
+    ports:
+      - "8545:8545"
+    command: >
+      -d
+      --accounts 10
+      --account_keys_path /ganache-data/keys.json
+      --mnemonic "test test test test test test test test test test test junk"
+      --chain.chainId 1337
+      --host 0.0.0.0
+    volumes:
+      - ganache-data:/ganache-data
+    networks:
+      - personal-server-net
+
+networks:
+  personal-server-net:
+    driver: bridge
+
+volumes:
+  ganache-data:

@@ -169,8 +169,27 @@ class OperationsService:
         files_content = self._decrypt_files_content(files_metadata, server_private_key, request_id)
 
         try:
-            logger.info(f"[SERVICE] Executing compute operation with {len(files_content)} decrypted files [RequestID: {request_id}]")
-            result = self.compute.execute(grant_file, files_content)
+            # Route to appropriate compute provider based on operation type
+            if grant_file.operation == "prompt_qwen_agent":
+                logger.info(f"[SERVICE] Routing to Qwen agent provider [RequestID: {request_id}]")
+                from compute.qwen_agent import QwenCodeAgentProvider
+                agent_provider = QwenCodeAgentProvider()
+                result = agent_provider.execute(grant_file, files_content)
+            elif grant_file.operation == "prompt_gemini_agent":
+                logger.info(f"[SERVICE] Routing to Gemini agent provider [RequestID: {request_id}]")
+                from compute.gemini_agent import GeminiAgentProvider
+                agent_provider = GeminiAgentProvider()
+                result = agent_provider.execute(grant_file, files_content)
+            elif grant_file.operation == "agentic_task":
+                # Keep backward compatibility for existing agentic_task operations
+                logger.info(f"[SERVICE] Routing to Qwen agent (legacy agentic_task) [RequestID: {request_id}]")
+                from compute.qwen_agent import QwenCodeAgentProvider
+                agent_provider = QwenCodeAgentProvider()
+                result = agent_provider.execute(grant_file, files_content)
+            else:
+                logger.info(f"[SERVICE] Executing standard compute operation with {len(files_content)} decrypted files [RequestID: {request_id}]")
+                result = self.compute.execute(grant_file, files_content)
+            
             logger.info(f"[SERVICE] Compute operation completed successfully, operation ID: {result.id} [RequestID: {request_id}]")
             return result
         except Exception as e:
@@ -181,7 +200,20 @@ class OperationsService:
     def get(self, operation_id: str) -> GetResponse:
         logger.info(f"[SERVICE] Getting operation status for {operation_id}")
         try:
-            result = self.compute.get(operation_id)
+            # Check if this is an agent operation based on ID prefix
+            if operation_id.startswith("qwen_"):
+                logger.info(f"[SERVICE] Routing get request to Qwen agent provider for {operation_id}")
+                from compute.qwen_agent import QwenCodeAgentProvider
+                agent_provider = QwenCodeAgentProvider()
+                result = agent_provider.get(operation_id)
+            elif operation_id.startswith("gemini_"):
+                logger.info(f"[SERVICE] Routing get request to Gemini agent provider for {operation_id}")
+                from compute.gemini_agent import GeminiAgentProvider
+                agent_provider = GeminiAgentProvider()
+                result = agent_provider.get(operation_id)
+            else:
+                result = self.compute.get(operation_id)
+            
             if not result:
                 logger.error(f"[SERVICE] Operation {operation_id} not found in compute layer")
                 raise NotFoundError("Operation", operation_id)
@@ -317,10 +349,16 @@ class OperationsService:
             logger.debug(f"[SERVICE] No response_format specified, defaulting to text mode [RequestID: {request_id}]")
             return
         
-        # response_format is only valid for llm_inference operations
-        if grant_file.operation != "llm_inference":
-            logger.error(f"[SERVICE] response_format specified for non-LLM operation: {grant_file.operation} [RequestID: {request_id}]")
+        # response_format is only valid for llm_inference operations (not agent operations)
+        agent_operations = ["agentic_task", "prompt_qwen_agent", "prompt_gemini_agent"]
+        if grant_file.operation not in ["llm_inference"] and grant_file.operation not in agent_operations:
+            logger.error(f"[SERVICE] response_format specified for unsupported operation: {grant_file.operation} [RequestID: {request_id}]")
             raise ValidationError(f"response_format is only valid for llm_inference operations, not {grant_file.operation}")
+        
+        # Agent operations don't support response_format
+        if grant_file.operation in agent_operations:
+            logger.debug(f"[SERVICE] Ignoring response_format for agent operation: {grant_file.operation} [RequestID: {request_id}]")
+            return
         
         # Validate response_format structure
         if not isinstance(response_format, dict):

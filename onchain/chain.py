@@ -16,11 +16,13 @@ class Chain:
 # Chain definitions
 MOKSHA = Chain(chain_id=14800, url="https://rpc.moksha.vana.org")
 MAINNET = Chain(chain_id=1480, url="https://rpc.vana.org")
+LOCAL = Chain(chain_id=1337, url="http://localhost:8545")  # Local development chain (Ganache/Hardhat)
 
 # Chain registry
 CHAINS = {
     MOKSHA.chain_id: MOKSHA,
     MAINNET.chain_id: MAINNET,
+    LOCAL.chain_id: LOCAL,
 }
 
 # Contract addresses
@@ -29,18 +31,21 @@ CONTRACTS = {
         "addresses": {
             MOKSHA.chain_id: "0xD54523048AdD05b4d734aFaE7C68324Ebb7373eF",
             MAINNET.chain_id: "0xD54523048AdD05b4d734aFaE7C68324Ebb7373eF",
+            LOCAL.chain_id: "0x0000000000000000000000000000000000000001",  # Mock address for local
         },
     },
     "DataRegistry": {
         "addresses": {
             MOKSHA.chain_id: "0x8C8788f98385F6ba1adD4234e551ABba0f82Cb7C",
             MAINNET.chain_id: "0x8C8788f98385F6ba1adD4234e551ABba0f82Cb7C",
+            LOCAL.chain_id: "0x0000000000000000000000000000000000000002",  # Mock address for local
         },
     },
     "DataPortabilityGrantees": {
         "addresses": {
             MOKSHA.chain_id: "0x8325C0A0948483EdA023A1A2Fd895e62C5131234",
             MAINNET.chain_id: "0x8325C0A0948483EdA023A1A2Fd895e62C5131234",
+            LOCAL.chain_id: "0x0000000000000000000000000000000000000003",  # Mock address for local
         },
     },
 }

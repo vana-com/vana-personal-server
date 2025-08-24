@@ -179,6 +179,8 @@ components:
         propertyName: operation
         mapping:
           llm_inference: '#/components/schemas/LLMInferenceGrantFile'
+          prompt_qwen_agent: '#/components/schemas/QwenAgentGrantFile'
+          prompt_gemini_agent: '#/components/schemas/GeminiAgentGrantFile'
 
     LLMInferenceGrantFile:
       allOf:
@@ -202,10 +204,51 @@ components:
               additionalProperties: true
               description: LLM inference parameters
 
+    QwenAgentGrantFile:
+      allOf:
+        - $ref: '#/components/schemas/BaseGrantFile'
+        - type: object
+          properties:
+            operation:
+              type: string
+              enum: [prompt_qwen_agent]
+              example: "prompt_qwen_agent"
+            parameters:
+              type: object
+              required: [goal]
+              properties:
+                goal:
+                  type: string
+                  description: The analysis goal for processing personal data
+                  example: "Analyze my conversation history and create a personalized learning summary"
+              additionalProperties: true
+              description: Qwen agent task parameters
+
+    GeminiAgentGrantFile:
+      allOf:
+        - $ref: '#/components/schemas/BaseGrantFile'
+        - type: object
+          properties:
+            operation:
+              type: string
+              enum: [prompt_gemini_agent]
+              example: "prompt_gemini_agent"
+            parameters:
+              type: object
+              required: [goal]
+              properties:
+                goal:
+                  type: string
+                  description: The analysis goal for processing personal data  
+                  example: "Review my personal activity data for privacy insights and recommendations"
+              additionalProperties: true
+              description: Gemini agent task parameters
+
     GrantFile:
       oneOf:
         - $ref: '#/components/schemas/LLMInferenceGrantFile'
-        # Future operations will be added here as additional oneOf options
+        - $ref: '#/components/schemas/QwenAgentGrantFile'
+        - $ref: '#/components/schemas/GeminiAgentGrantFile'
       discriminator:
         propertyName: operation
       description: |
@@ -214,9 +257,15 @@ components:
         
         **Currently Supported Operations:**
         - `llm_inference`: Large Language Model inference with optional JSON mode
+        - `prompt_qwen_agent`: Qwen AI agent for analyzing personal data
+        - `prompt_gemini_agent`: Gemini AI agent for personal data insights
         
-        **Future Operations:**
-        Additional operation types will be added as the platform expands.
+        **Agent Operations:**
+        Agent operations (`prompt_qwen_agent` and `prompt_gemini_agent`) execute sophisticated
+        AI agents that analyze and process the user's personal data. These agents can generate
+        insights, reports, recommendations, and structured analysis of private data such as
+        conversation histories, personal preferences, activity logs, and other user-specific content.
+        The agents work in isolated environments and return structured results with artifacts.
         
         **JSON Mode (LLM only):**
         When `response_format.type` is `json_object`, the LLM will output valid JSON.
@@ -335,6 +384,28 @@ paths:
         }
         ```
         
+        *Qwen Agent for personal data analysis:*
+        ```json
+        {
+          "grantee": "0x123...",
+          "operation": "prompt_qwen_agent",
+          "parameters": {
+            "goal": "Analyze my conversation history and activity logs to identify patterns and create a personalized productivity report"
+          }
+        }
+        ```
+        
+        *Gemini Agent for personal insights:*
+        ```json
+        {
+          "grantee": "0x123...",
+          "operation": "prompt_gemini_agent",
+          "parameters": {
+            "goal": "Review my personal data for privacy concerns and generate recommendations for improving my digital privacy"
+          }
+        }
+        ```
+        
         **Possible Errors:**
         - `400 VALIDATION_ERROR`: Invalid request format or missing required fields
         - `400 VALIDATION_ERROR_PERMISSION_ID`: Invalid or missing permission ID
@@ -366,6 +437,18 @@ paths:
                 value:
                   app_signature: "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
                   operation_request_json: "{\"permission_id\": 2048}"
+              qwen_agent:
+                summary: Qwen Agent Task
+                description: Request for Qwen Code agent to perform a complex coding task (defined in grant file)
+                value:
+                  app_signature: "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+                  operation_request_json: "{\"permission_id\": 3072}"
+              gemini_agent:
+                summary: Gemini Agent Task
+                description: Request for Gemini AI agent to perform development workflow (defined in grant file)
+                value:
+                  app_signature: "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+                  operation_request_json: "{\"permission_id\": 4096}"
       responses:
         "202":
           description: Accepted — operation handle returned.
@@ -499,3 +582,89 @@ paths:
                 oneOf:
                   - $ref: '#/components/schemas/OperationErrorResponse'
                   - $ref: '#/components/schemas/InternalServerErrorResponse'
+
+  /artifacts/download:
+    post:
+      summary: Download operation artifact with authentication
+      description: |
+        Downloads an artifact generated by a completed agent operation.
+        
+        Requires signature-based authentication using the same pattern as operations API.
+        The requesting address must match the original operation's grantee.
+        
+        **Authentication:**
+        - Sign the JSON request data: `{"operation_id":"...","artifact_path":"..."}`  
+        - Include the signature in the request body
+        - Must be the same address that created the operation
+        
+        **Artifact Path:**
+        Use the `artifact_path` from the operation result's artifact metadata.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation_id, artifact_path, signature]
+              properties:
+                operation_id:
+                  type: string
+                  description: The operation ID that generated the artifact
+                  example: "gemini_1755995331783"
+                artifact_path:
+                  type: string  
+                  description: Path to the artifact file (from operation result)
+                  example: "out/analysis_report.md"
+                signature:
+                  type: string
+                  description: Ethereum signature over the JSON request data
+                  example: "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de..."
+            example:
+              operation_id: "gemini_1755995331783"
+              artifact_path: "out/analysis_report.md"
+              signature: "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+      responses:
+        "200":
+          description: Artifact content returned successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+                format: binary
+              example: "# Analysis Report\n\nThis report analyzes..."
+            text/markdown:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: object
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid request or authentication failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationErrorResponse' }
+        "401":
+          description: Authentication failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthenticationErrorResponse' }
+        "403":
+          description: Access denied - not the authorized grantee
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthorizationErrorResponse' }
+        "404":
+          description: Operation or artifact not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotFoundErrorResponse' }
+        "500":
+          description: Server error during download
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalServerErrorResponse' }

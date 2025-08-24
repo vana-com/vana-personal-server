@@ -33,6 +33,38 @@ class Settings(BaseSettings):
         description="Blockchain chain ID"
     )
     
+    # Mock mode for local testing
+    mock_mode: bool = Field(
+        default=False,
+        alias="MOCK_MODE",
+        description="Enable mock mode to bypass blockchain validation for testing"
+    )
+    
+    # Cloudflare R2 Configuration
+    r2_account_id: str = Field(
+        default="",
+        alias="R2_ACCOUNT_ID",
+        description="Cloudflare R2 account ID"
+    )
+    
+    r2_access_key_id: str = Field(
+        default="",
+        alias="R2_ACCESS_KEY_ID", 
+        description="Cloudflare R2 access key ID"
+    )
+    
+    r2_secret_access_key: str = Field(
+        default="",
+        alias="R2_SECRET_ACCESS_KEY",
+        description="Cloudflare R2 secret access key"
+    )
+    
+    r2_bucket_name: str = Field(
+        default="personal-server-artifacts",
+        alias="R2_BUCKET_NAME",
+        description="R2 bucket name for artifact storage"
+    )
+    
     mnemonic_language: str = Field(
         default="english",
         alias="MNEMONIC_LANGUAGE",
@@ -136,6 +168,74 @@ class Settings(BaseSettings):
         default=None,
         alias="RATE_LIMIT_WHITELIST_IPS",
         description="Comma-separated list of whitelisted IPs"
+    )
+
+    # Qwen Code Configuration (headless agent)
+    qwen_api_url: Optional[str] = Field(
+        default=None,
+        alias="QWEN_API_URL",
+        description="OpenAI-compatible API endpoint URL"
+    )
+    
+    qwen_model_name: Optional[str] = Field(
+        default=None,
+        alias="QWEN_MODEL_NAME",
+        description="Model name (e.g., qwen/qwen3-coder)"
+    )
+    
+    qwen_api_key: Optional[str] = Field(
+        default=None,
+        alias="QWEN_API_KEY",
+        description="API key for authentication"
+    )
+    
+    qwen_timeout_sec: int = Field(
+        default=180,
+        alias="QWEN_TIMEOUT_SEC",
+        description="Wall-clock timeout for agent runs in seconds"
+    )
+    
+    qwen_max_stdout_mb: int = Field(
+        default=2,
+        alias="QWEN_MAX_STDOUT_MB",
+        description="Maximum stdout size in megabytes"
+    )
+    
+    qwen_cli_path: Optional[str] = Field(
+        default=None,
+        alias="QWEN_CLI_PATH",
+        description="Path to qwen CLI binary (defaults to 'qwen' on PATH)"
+    )
+
+    # Gemini CLI Configuration (headless agent)
+    gemini_api_key: Optional[str] = Field(
+        default=None,
+        alias="GEMINI_API_KEY",
+        description="Google API key for Gemini"
+    )
+    
+    gemini_use_vertex_ai: bool = Field(
+        default=False,
+        alias="GEMINI_USE_VERTEX_AI",
+        description="Use Vertex AI for Gemini (requires GCP project setup)"
+    )
+    
+    gemini_timeout_sec: int = Field(
+        default=180,
+        alias="GEMINI_TIMEOUT_SEC",
+        description="Wall-clock timeout for Gemini agent runs in seconds"
+    )
+    
+    gemini_max_stdout_mb: int = Field(
+        default=2,
+        alias="GEMINI_MAX_STDOUT_MB",
+        description="Maximum stdout size in megabytes for Gemini"
+    )
+    
+    gemini_cli_path: Optional[str] = Field(
+        default=None,
+        alias="GEMINI_CLI_PATH",
+        description="Path to gemini CLI binary (defaults to 'gemini' on PATH)"
     )
 
     @field_validator('replicate_api_token')
