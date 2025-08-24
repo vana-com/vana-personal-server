@@ -172,10 +172,10 @@ class DockerAgentRunner:
         container_config = {
             "image": self.image_name,
             "command": full_command,
-            "working_dir": "/workspace",
+            "working_dir": "/workspace/agent-work",
             "environment": self._prepare_environment(env_vars),
             "volumes": {
-                str(workspace_path): {"bind": "/workspace", "mode": "rw"}
+                str(workspace_path): {"bind": "/workspace/agent-work", "mode": "rw"}
             },
             "network_mode": "none",  # Complete network isolation
             "user": "appuser",       # Non-root execution
@@ -428,6 +428,7 @@ class DockerAgentRunner:
     def _collect_artifacts(self, workspace_path: Path, operation_id: str) -> List[Dict]:
         """Collect artifacts from workspace output directory."""
         artifacts = []
+        # Artifacts are created in the working directory, which is now agent-work
         out_dir = workspace_path / "out"
         
         if out_dir.exists() and out_dir.is_dir():
