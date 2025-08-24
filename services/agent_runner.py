@@ -189,8 +189,7 @@ class DockerAgentRunner:
         if stdin_file:
             # Use cat to pipe the file content to the command's stdin
             # The file is in the current working directory, use relative path
-            # First, let's check if the file exists and log it
-            full_command = ["sh", "-c", f"ls -la .stdin_input 2>&1 && cat .stdin_input | {command} {escaped_args}"]
+            full_command = ["sh", "-c", f"cat .stdin_input | {command} {escaped_args}"]
         else:
             full_command = ["sh", "-c", f"{command} {escaped_args}"]
         
