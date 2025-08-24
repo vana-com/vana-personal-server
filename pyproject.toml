@@ -6,7 +6,7 @@ authors = ["Vana Team"]
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.12"
 fastapi = "^0.104.0"
 uvicorn = {extras = ["standard"], version = "^0.24.0"}
 requests = "^2.31.0"
