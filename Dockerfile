@@ -14,12 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Poetry for Python dependencies
 RUN pip install --no-cache-dir poetry
 
-# Install agent CLI tools globally
-RUN npm install -g @google/gemini-cli @qwen-code/qwen-code@latest
+# Copy package files for reproducible builds
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production
 
 COPY pyproject.toml poetry.lock* ./
 RUN poetry config virtualenvs.create false \
-    && poetry lock \
     && poetry install --only main --no-interaction --no-ansi
 
 COPY . .

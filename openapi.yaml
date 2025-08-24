@@ -583,6 +583,76 @@ paths:
                   - $ref: '#/components/schemas/OperationErrorResponse'
                   - $ref: '#/components/schemas/InternalServerErrorResponse'
 
+  /artifacts/{operation_id}/list:
+    post:
+      summary: List operation artifacts with authentication
+      description: |
+        Lists all artifacts for a completed operation.
+        
+        Requires signature-based authentication using the same pattern as download.
+        The requesting address must match the original operation's grantee.
+        
+        **Authentication:**
+        - Sign the JSON request data: `{"operation_id":"...","action":"list"}`  
+        - Include the signature in the request body
+        - Must be the same address that created the operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation_id, signature]
+              properties:
+                operation_id:
+                  type: string
+                  description: The operation ID
+                  example: "gemini_1755995331783"
+                signature:
+                  type: string
+                  description: Ethereum signature over the JSON request data
+                  example: "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e..."
+      responses:
+        "200":
+          description: Artifact list returned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  operation_id:
+                    type: string
+                  artifacts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                        content_type:
+                          type: string
+                        checksum:
+                          type: string
+                        created_at:
+                          type: string
+        "401":
+          description: Authentication failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthenticationErrorResponse' }
+        "403":
+          description: Access denied - not the authorized grantee
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthorizationErrorResponse' }
+        "404":
+          description: Operation not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotFoundErrorResponse' }
+
   /artifacts/download:
     post:
       summary: Download operation artifact with authentication

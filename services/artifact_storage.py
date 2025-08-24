@@ -21,6 +21,8 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from cryptography.fernet import Fernet
 
 from settings import get_settings
+from services.identity import IdentityService
+from utils.files.encrypt import encrypt_symmetric_key_for_server, decrypt_symmetric_key_with_server
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,7 @@ class ArtifactStorageService:
     def __init__(self):
         self.settings = get_settings()
         self.bucket_name = self.settings.r2_bucket_name
+        self.identity_service = IdentityService()
         
         # Initialize R2 client (S3-compatible)
         try:
@@ -83,6 +86,48 @@ class ArtifactStorageService:
         """Decrypt artifact content."""
         f = Fernet(key)
         return f.decrypt(encrypted_content)
+    
+    def _encrypt_key_for_grantee(self, symmetric_key: bytes, grantee_address: str) -> str:
+        """
+        Encrypt symmetric key using eccrypto-compatible format with server's public key.
+        Uses derived server keys and existing encryption utilities for consistency.
+        """
+        try:
+            # Derive server identity for this grantee
+            server_identity = self.identity_service.derive_server_identity(grantee_address)
+            
+            # Get server's public key
+            server_public_key = server_identity.personal_server.public_key
+            
+            # Encrypt symmetric key using existing utilities
+            encrypted_key_hex = encrypt_symmetric_key_for_server(symmetric_key, server_public_key)
+            
+            return encrypted_key_hex
+            
+        except Exception as e:
+            logger.error(f"Failed to encrypt key for grantee {grantee_address}: {e}")
+            raise ValueError(f"Key encryption failed: {e}")
+    
+    def _decrypt_key_for_grantee(self, encrypted_key_hex: str, grantee_address: str) -> bytes:
+        """
+        Decrypt symmetric key using eccrypto-compatible format with server's private key.
+        Uses derived server keys and existing decryption utilities for consistency.
+        """
+        try:
+            # Derive server identity for this grantee  
+            server_identity = self.identity_service.derive_server_identity(grantee_address)
+            
+            # Get server's private key
+            server_private_key = server_identity.personal_server.private_key
+            
+            # Decrypt symmetric key using existing utilities
+            symmetric_key = decrypt_symmetric_key_with_server(encrypted_key_hex, server_private_key)
+            
+            return symmetric_key
+            
+        except Exception as e:
+            logger.error(f"Failed to decrypt key for grantee {grantee_address}: {e}")
+            raise ValueError(f"Key decryption failed: {e}")
     
     def _get_object_key(self, operation_id: str, filename: str) -> str:
         """Generate R2 object key for an artifact."""
@@ -164,13 +209,16 @@ class ArtifactStorageService:
                 logger.error(f"Failed to store artifact {artifact.get('name', 'unknown')}: {e}")
                 # Continue with other artifacts
         
+        # Encrypt the symmetric key using ECIES with server's public key
+        encrypted_symmetric_key = self._encrypt_key_for_grantee(encryption_key, grantee_address)
+        
         # Store operation metadata
         operation_metadata = {
             "operation_id": operation_id,
             "grantee_address": grantee_address,
             "created_at": datetime.utcnow().isoformat(),
             "expires_at": expires_at.isoformat(),
-            "encryption_key": base64.b64encode(encryption_key).decode('ascii'),
+            "encrypted_key": encrypted_symmetric_key,  # ECIES-encrypted, not plaintext!
             "total_size": total_size,
             "artifact_count": len(stored_artifacts),
             "artifacts": stored_artifacts
@@ -224,7 +272,18 @@ class ArtifactStorageService:
                 logger.error(f"No metadata found for operation {operation_id}")
                 return None
             
-            encryption_key = base64.b64decode(metadata["encryption_key"])
+            # Decrypt the symmetric key using ECIES
+            grantee_address = metadata["grantee_address"]
+            encrypted_key_hex = metadata.get("encrypted_key") or metadata.get("encryption_key", "")
+            
+            # Handle legacy format (base64) during transition
+            if "encrypted_key" in metadata:
+                # New secure format - decrypt with ECIES
+                encryption_key = self._decrypt_key_for_grantee(encrypted_key_hex, grantee_address)
+            else:
+                # Legacy format - base64 decoding (will be removed)
+                logger.warning(f"Using legacy encryption format for operation {operation_id}")
+                encryption_key = base64.b64decode(encrypted_key_hex)
             
             # Download encrypted artifact
             object_key = self._get_object_key(operation_id, artifact_path)
@@ -246,6 +305,38 @@ class ArtifactStorageService:
         except Exception as e:
             logger.error(f"Failed to get artifact {operation_id}/{artifact_path}: {e}")
             return None
+    
+    async def store_artifact(
+        self,
+        operation_id: str,
+        artifact_path: str,
+        content: bytes,
+        grantee_address: str
+    ) -> Dict:
+        """
+        Store a single artifact (wrapper around store_artifacts).
+        
+        Args:
+            operation_id: Operation identifier
+            artifact_path: Path/name of the artifact
+            content: Artifact content as bytes
+            grantee_address: Address of the grantee
+            
+        Returns:
+            Dictionary with storage result
+        """
+        artifact = {
+            "name": artifact_path,
+            "content": content
+        }
+        
+        result = await self.store_artifacts(
+            operation_id=operation_id,
+            artifacts=[artifact],
+            grantee_address=grantee_address
+        )
+        
+        return result
     
     async def list_artifacts(self, operation_id: str) -> List[Dict]:
         """List all artifacts for an operation."""

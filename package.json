@@ -1,0 +1,14 @@
+{
+  "name": "vana-personal-server-agents",
+  "version": "0.1.0",
+  "description": "CLI dependencies for AI agents in personal server",
+  "private": true,
+  "dependencies": {
+    "@google/gemini-cli": "^1.0.0",
+    "@qwen-code/qwen-code": "latest"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}
