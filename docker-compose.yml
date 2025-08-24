@@ -9,6 +9,7 @@ services:
       - .env
     environment:
       # Core configuration
+      - HOST_PROJECT_DIR=${PWD}
       - WALLET_MNEMONIC=${WALLET_MNEMONIC:-test test test test test test test test test test test junk}
       - CHAIN_ID=${CHAIN_ID:-1337}
       - RPC_URL=${RPC_URL:-http://localhost:8545}
@@ -50,8 +51,6 @@ services:
       - ./:/app
       # Mount docker socket for sibling container pattern (agents run in separate containers)
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Use host's /tmp for sibling containers to share files
-      - /tmp:/tmp
     # Grant access to Docker socket by adding container user to docker group
     # Find your Docker GID with: getent group docker | cut -d: -f3
     group_add:

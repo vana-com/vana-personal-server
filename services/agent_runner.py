@@ -105,64 +105,74 @@ class DockerAgentRunner:
         
         logger.info(f"[DOCKER-{agent_type}] execute_agent called with stdin_input={bool(stdin_input)} (length={len(stdin_input) if stdin_input else 0})")
         
-        # Use the host's /tmp which is shared between sibling containers
-        # This ensures both containers see the same filesystem
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Make the temp directory world-traversable
-            Path(temp_dir).chmod(0o755)
-            
-            workspace_path = Path(temp_dir) / "workspace"
-            workspace_path.mkdir(mode=0o755)
+        # Use host path from environment for workspace sharing between sibling containers
+        host_root = Path(os.environ["HOST_PROJECT_DIR"])
+        host_shared = host_root / ".agent_workspaces"
+        host_shared.mkdir(exist_ok=True)
+        
+        workspace = Path(tempfile.mkdtemp(prefix=f"{operation_id}_", dir=str(host_shared)))
+        temp_dir = str(workspace)  # For compatibility with existing code
+        
+        try:
+            # Use the workspace directory directly (already created by tempfile.mkdtemp)
+            workspace_path = workspace
             workspace_path.chmod(0o755)
             
             # Create a writable home directory for CLI config files
             # Don't use bind mount for home - it has UID/GID issues
             # Instead, we'll use tmpfs or let the container create it
             
+            # Stage workspace files
+            self._stage_workspace_files(workspace_path, workspace_files)
+            
+            # If stdin_input provided, make it world-readable to avoid UID issues
+            stdin_file = None
+            if stdin_input:
+                stdin_file = workspace_path / ".stdin_input"
+                stdin_file.write_text(stdin_input, encoding='utf-8')
+                # Make it world-readable so container user can access it regardless of UID
+                stdin_file.chmod(0o644)
+                logger.info(f"[DOCKER] Wrote stdin input to {stdin_file} (exists: {stdin_file.exists()}, size: {stdin_file.stat().st_size} bytes, mode: {oct(stdin_file.stat().st_mode)})")
+                # Also log first 100 chars of content for debugging
+                logger.debug(f"[DOCKER] Stdin content preview: {stdin_input[:100]}...")
+                
+                # List what's actually in the workspace directory on the host
+                files_in_workspace = list(os.listdir(workspace_path))
+                logger.info(f"[DOCKER] Files in workspace on host: {files_in_workspace}")
+            
+            # Execute in container with optional streaming
+            result = await self._run_container(
+                agent_type, command, args, workspace_path, env_vars, 
+                operation_id, task_store, stdin_file
+            )
+            
+            # Process artifacts from workspace
+            artifacts = self._collect_artifacts(workspace_path, operation_id)
+            result["artifacts"] = artifacts
+            result["execution_time"] = time.time() - start_time
+            
+            return result
+                
+        except Exception as e:
+            logger.error(f"[DOCKER-{agent_type}] Agent execution failed: {e}")
+            return {
+                "status": "error",
+                "summary": f"Docker execution failed: {type(e).__name__}",
+                "result": {},
+                "artifacts": [],
+                "logs": [str(e)],
+                "stdout": "",
+                "execution_time": time.time() - start_time
+            }
+        finally:
+            # Clean up workspace directory
             try:
-                # Stage workspace files
-                self._stage_workspace_files(workspace_path, workspace_files)
-                
-                # If stdin_input provided, make it world-readable to avoid UID issues
-                stdin_file = None
-                if stdin_input:
-                    stdin_file = workspace_path / ".stdin_input"
-                    stdin_file.write_text(stdin_input, encoding='utf-8')
-                    # Make it world-readable so container user can access it regardless of UID
-                    stdin_file.chmod(0o644)
-                    logger.info(f"[DOCKER] Wrote stdin input to {stdin_file} (exists: {stdin_file.exists()}, size: {stdin_file.stat().st_size} bytes, mode: {oct(stdin_file.stat().st_mode)})")
-                    # Also log first 100 chars of content for debugging
-                    logger.debug(f"[DOCKER] Stdin content preview: {stdin_input[:100]}...")
-                    
-                    # List what's actually in the workspace directory on the host
-                    import os
-                    files_in_workspace = list(os.listdir(workspace_path))
-                    logger.info(f"[DOCKER] Files in workspace on host: {files_in_workspace}")
-                
-                # Execute in container with optional streaming
-                result = await self._run_container(
-                    agent_type, command, args, workspace_path, env_vars, 
-                    operation_id, task_store, stdin_file
-                )
-                
-                # Process artifacts from workspace
-                artifacts = self._collect_artifacts(workspace_path, operation_id)
-                result["artifacts"] = artifacts
-                result["execution_time"] = time.time() - start_time
-                
-                return result
-                
+                import shutil
+                if workspace.exists():
+                    shutil.rmtree(workspace)
+                    logger.debug(f"[DOCKER] Cleaned up workspace: {workspace}")
             except Exception as e:
-                logger.error(f"[DOCKER-{agent_type}] Agent execution failed: {e}")
-                return {
-                    "status": "error",
-                    "summary": f"Docker execution failed: {type(e).__name__}",
-                    "result": {},
-                    "artifacts": [],
-                    "logs": [str(e)],
-                    "stdout": "",
-                    "execution_time": time.time() - start_time
-                }
+                logger.warning(f"[DOCKER] Failed to cleanup workspace: {e}")
     
     def _stage_workspace_files(self, workspace_path: Path, files_dict: Dict[str, bytes]):
         """Stage input files in the workspace directory."""
@@ -222,19 +232,10 @@ class DockerAgentRunner:
             "command": full_command,
             "working_dir": "/workspace/agent-work",
             "environment": self._prepare_environment(env_vars),
-            # Use bind mounts with explicit options
-            "mounts": [
-                {
-                    "type": "bind",
-                    "source": str(workspace_path),
-                    "target": "/workspace/agent-work",
-                    "read_only": False,
-                    # Bind propagation to ensure mount is visible
-                    "bind_options": {
-                        "propagation": "rprivate"
-                    }
-                }
-            ],
+            # Use volumes dict for Docker API (expects host paths)
+            "volumes": {
+                str(workspace_path): {"bind": "/workspace/agent-work", "mode": "rw,z"}  # 'z' helps on SELinux hosts
+            },
             # Use tmpfs for writable directories instead of bind mounts (avoids UID/GID issues)
             "tmpfs": {
                 "/home/appuser": "size=50m,mode=1777",  # Writable home directory
