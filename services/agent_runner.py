@@ -79,7 +79,8 @@ class DockerAgentRunner:
         args: List[str],
         workspace_files: Dict[str, bytes],
         env_vars: Dict[str, str],
-        operation_id: str
+        operation_id: str,
+        task_store=None  # Optional task store for streaming logs
     ) -> Dict[str, Any]:
         """
         Execute agent in secure Docker container.
@@ -105,9 +106,9 @@ class DockerAgentRunner:
                 # Stage workspace files
                 self._stage_workspace_files(workspace_path, workspace_files)
                 
-                # Execute in container
+                # Execute in container with optional streaming
                 result = await self._run_container(
-                    agent_type, command, args, workspace_path, env_vars, operation_id
+                    agent_type, command, args, workspace_path, env_vars, operation_id, task_store
                 )
                 
                 # Process artifacts from workspace
@@ -148,7 +149,8 @@ class DockerAgentRunner:
         args: List[str],
         workspace_path: Path,
         env_vars: Dict[str, str],
-        operation_id: str
+        operation_id: str,
+        task_store=None
     ) -> Dict[str, Any]:
         """
         Run agent command in secure Docker container.
@@ -183,8 +185,11 @@ class DockerAgentRunner:
         logger.debug(f"[DOCKER-{agent_type}] Command: {' '.join(full_command)}")
         
         try:
-            # Run container asynchronously
-            return await self._execute_container_async(container_config, agent_type, operation_id)
+            # Run container asynchronously with streaming if task_store provided
+            if task_store:
+                return await self._execute_container_streaming(container_config, agent_type, operation_id, task_store)
+            else:
+                return await self._execute_container_async(container_config, agent_type, operation_id)
             
         except ImageNotFound:
             error_msg = f"Docker image '{self.image_name}' not found"
@@ -436,6 +441,275 @@ class DockerAgentRunner:
                         logger.warning(f"[DOCKER] Failed to collect artifact {file_path}: {e}")
         
         return artifacts
+    
+    async def _execute_container_streaming(
+        self, 
+        container_config: Dict,
+        agent_type: str,
+        operation_id: str,
+        task_store
+    ) -> Dict[str, Any]:
+        """
+        Execute container with real-time log streaming.
+        
+        This method:
+        1. Starts the container
+        2. Streams logs in real-time to task store
+        3. Monitors container status for completion
+        4. Processes results when done
+        """
+        
+        def create_and_start_container():
+            """Create and start container synchronously."""
+            try:
+                container = self.docker_client.containers.create(**container_config)
+                container.start()
+                return container, None
+            except Exception as e:
+                logger.error(f"[DOCKER-{agent_type}] Failed to start container: {e}")
+                return None, str(e)
+        
+        # Start container in thread pool
+        loop = asyncio.get_event_loop()
+        container, error = await loop.run_in_executor(None, create_and_start_container)
+        
+        if error:
+            return {
+                "status": "error",
+                "summary": f"Failed to start container: {error}",
+                "result": {},
+                "artifacts": [],
+                "logs": [error],
+                "stdout": ""
+            }
+        
+        logger.info(f"[DOCKER-{agent_type}] Container started for {operation_id}, streaming logs...")
+        
+        # Run log streaming and status monitoring in parallel
+        try:
+            stream_task = asyncio.create_task(
+                self._stream_container_logs(container, agent_type, operation_id, task_store)
+            )
+            monitor_task = asyncio.create_task(
+                self._monitor_container_status(container, agent_type, operation_id)
+            )
+            
+            # Wait for both tasks
+            logs_result, status_result = await asyncio.gather(stream_task, monitor_task)
+            
+            # Combine results
+            stdout = logs_result.get("stdout", "")
+            exit_code = status_result.get("exit_code", -1)
+            
+            # Clean up container
+            try:
+                await loop.run_in_executor(None, container.remove)
+                logger.debug(f"[DOCKER-{agent_type}] Container cleaned up")
+            except:
+                pass  # Ignore cleanup errors
+            
+            # Parse and return results
+            parsed_json = self._parse_agent_result(stdout)
+            has_sentinel = SENTINEL in stdout
+            
+            if parsed_json:
+                status = parsed_json.get("status", "ok" if has_sentinel else "error")
+                summary = parsed_json.get("summary", "Agent completed")
+            elif has_sentinel:
+                status = "warning"
+                summary = "Agent completed but produced no structured output"
+            else:
+                status = "error" if exit_code != 0 else "ok"
+                summary = f"Process exited with code {exit_code}"
+            
+            return {
+                "status": status,
+                "summary": summary,
+                "result": parsed_json or {},
+                "artifacts": [],
+                "logs": [],  # Logs already streamed to task store
+                "stdout": stdout
+            }
+            
+        except asyncio.CancelledError:
+            # Task was cancelled, clean up
+            logger.warning(f"[DOCKER-{agent_type}] Task cancelled, stopping container")
+            try:
+                await loop.run_in_executor(None, container.kill)
+                await loop.run_in_executor(None, container.remove)
+            except:
+                pass
+            raise
+        except Exception as e:
+            logger.error(f"[DOCKER-{agent_type}] Streaming execution failed: {e}")
+            # Try to clean up container
+            try:
+                await loop.run_in_executor(None, lambda: container.remove(force=True))
+            except:
+                pass
+            return {
+                "status": "error",
+                "summary": f"Container execution failed: {str(e)[:100]}",
+                "result": {},
+                "artifacts": [],
+                "logs": [str(e)],
+                "stdout": ""
+            }
+    
+    async def _stream_container_logs(
+        self,
+        container,
+        agent_type: str,
+        operation_id: str,
+        task_store
+    ) -> Dict[str, Any]:
+        """
+        Stream logs from container to task store in real-time.
+        
+        Returns dict with stdout collected.
+        """
+        loop = asyncio.get_event_loop()
+        stdout_lines = []
+        log_batch = []
+        total_size = 0
+        sentinel_found = False
+        
+        def get_log_stream():
+            """Get log stream from container."""
+            try:
+                return container.logs(stream=True, follow=True)
+            except Exception as e:
+                logger.error(f"[DOCKER-{agent_type}] Failed to get log stream: {e}")
+                return None
+        
+        # Get log stream in thread pool
+        log_stream = await loop.run_in_executor(None, get_log_stream)
+        
+        if not log_stream:
+            return {"stdout": "", "error": "Failed to get log stream"}
+        
+        try:
+            # Process log stream
+            while True:
+                # Read next log line in thread pool (blocking operation)
+                def read_next_line():
+                    try:
+                        # The stream is an iterator that yields bytes
+                        return next(log_stream, None)
+                    except StopIteration:
+                        return None
+                    except Exception as e:
+                        logger.warning(f"[DOCKER-{agent_type}] Error reading log line: {e}")
+                        return None
+                
+                line_bytes = await loop.run_in_executor(None, read_next_line)
+                
+                if line_bytes is None:
+                    # Stream ended
+                    break
+                
+                # Decode line
+                line = line_bytes.decode('utf-8', errors='ignore').rstrip()
+                
+                # Check for size limit
+                if total_size + len(line) > self.max_output_bytes:
+                    line = "... [output truncated]"
+                    stdout_lines.append(line)
+                    log_batch.append(line)
+                    await task_store.append_logs(operation_id, log_batch)
+                    break
+                
+                stdout_lines.append(line)
+                log_batch.append(line)
+                total_size += len(line)
+                
+                # Check for sentinel
+                if SENTINEL in line:
+                    sentinel_found = True
+                
+                # Batch update to task store (every 10 lines or on sentinel)
+                if len(log_batch) >= 10 or sentinel_found:
+                    await task_store.append_logs(operation_id, log_batch)
+                    log_batch = []
+                
+                # If sentinel found, we can stop following logs
+                if sentinel_found:
+                    # Read any remaining output quickly
+                    remaining_count = 0
+                    while remaining_count < 20:  # Read up to 20 more lines after sentinel
+                        line_bytes = await loop.run_in_executor(None, read_next_line)
+                        if line_bytes is None:
+                            break
+                        line = line_bytes.decode('utf-8', errors='ignore').rstrip()
+                        stdout_lines.append(line)
+                        log_batch.append(line)
+                        remaining_count += 1
+                    
+                    # Final batch update
+                    if log_batch:
+                        await task_store.append_logs(operation_id, log_batch)
+                    break
+            
+            # Send any remaining logs
+            if log_batch:
+                await task_store.append_logs(operation_id, log_batch)
+            
+            return {"stdout": "\n".join(stdout_lines)}
+            
+        except Exception as e:
+            logger.error(f"[DOCKER-{agent_type}] Error streaming logs: {e}")
+            # Send any collected logs
+            if log_batch:
+                try:
+                    await task_store.append_logs(operation_id, log_batch)
+                except:
+                    pass
+            return {"stdout": "\n".join(stdout_lines), "error": str(e)}
+    
+    async def _monitor_container_status(
+        self,
+        container,
+        agent_type: str,
+        operation_id: str
+    ) -> Dict[str, Any]:
+        """
+        Monitor container status for completion or timeout.
+        
+        Returns dict with exit_code and any errors.
+        """
+        loop = asyncio.get_event_loop()
+        start_time = time.time()
+        
+        while True:
+            # Check container status in thread pool
+            def check_status():
+                try:
+                    container.reload()
+                    return container.status, container.attrs.get('State', {})
+                except Exception as e:
+                    logger.warning(f"[DOCKER-{agent_type}] Error checking status: {e}")
+                    return 'error', {}
+            
+            status, state = await loop.run_in_executor(None, check_status)
+            
+            # Check if container has exited
+            if status in ['exited', 'dead']:
+                exit_code = state.get('ExitCode', -1)
+                logger.info(f"[DOCKER-{agent_type}] Container exited with code {exit_code}")
+                return {"exit_code": exit_code}
+            
+            # Check for timeout
+            elapsed = time.time() - start_time
+            if elapsed > self.timeout_sec:
+                logger.warning(f"[DOCKER-{agent_type}] Container timeout after {elapsed:.1f}s, killing")
+                try:
+                    await loop.run_in_executor(None, container.kill)
+                except:
+                    pass
+                return {"exit_code": -1, "error": "Execution timeout"}
+            
+            # Check status every second
+            await asyncio.sleep(1)
     
     def cleanup(self):
         """Cleanup Docker resources."""

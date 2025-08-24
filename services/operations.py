@@ -189,7 +189,7 @@ class OperationsService:
             logger.error(f"[SERVICE] Grant file type: {type(grant_file)}, Files count: {len(files_content)} [RequestID: {request_id}]")
             raise ComputeError(f"Compute operation failed: {str(e)}")
 
-    def get(self, operation_id: str) -> GetResponse:
+    async def get(self, operation_id: str) -> GetResponse:
         logger.info(f"[SERVICE] Getting operation status for {operation_id}")
         try:
             # Check if this is an agent operation based on ID prefix
@@ -197,12 +197,12 @@ class OperationsService:
                 logger.info(f"[SERVICE] Routing get request to Qwen agent provider for {operation_id}")
                 from compute.qwen_agent import QwenCodeAgentProvider
                 agent_provider = QwenCodeAgentProvider()
-                result = agent_provider.get(operation_id)
+                result = await agent_provider.get(operation_id)
             elif operation_id.startswith("gemini_"):
                 logger.info(f"[SERVICE] Routing get request to Gemini agent provider for {operation_id}")
                 from compute.gemini_agent import GeminiAgentProvider
                 agent_provider = GeminiAgentProvider()
-                result = agent_provider.get(operation_id)
+                result = await agent_provider.get(operation_id)
             else:
                 result = self.compute.get(operation_id)
             

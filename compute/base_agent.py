@@ -309,14 +309,15 @@ class BaseAgentProvider(BaseCompute, ABC):
         # Get environment variables for the agent
         env_vars = self.get_env_overrides()
         
-        # Execute in Docker container
+        # Execute in Docker container with streaming
         result = await self.docker_runner.execute_agent(
             agent_type=self.AGENT_TYPE,
             command=command,
             args=args,
             workspace_files=workspace_files,
             env_vars=env_vars,
-            operation_id=operation_id
+            operation_id=operation_id,
+            task_store=self._task_store  # Enable streaming logs
         )
         
         return result

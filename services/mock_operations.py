@@ -135,7 +135,7 @@ class MockOperationsService:
             logger.error(f"[MOCK] Operation failed: {str(e)} [RequestID: {request_id}]")
             raise
     
-    def get(self, operation_id: str) -> GetResponse:
+    async def get(self, operation_id: str) -> GetResponse:
         """Get mock operation status."""
         logger.info(f"[MOCK] Getting status for operation {operation_id}")
         
@@ -143,10 +143,10 @@ class MockOperationsService:
         try:
             if operation_id.startswith("qwen_"):
                 agent_provider = self._get_qwen_agent()
-                return agent_provider.get(operation_id)
+                return await agent_provider.get(operation_id)
             elif operation_id.startswith("gemini_"):
                 agent_provider = self._get_gemini_agent()
-                return agent_provider.get(operation_id)
+                return await agent_provider.get(operation_id)
             else:
                 # Return mock completed status
                 return GetResponse(

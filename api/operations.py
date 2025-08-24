@@ -103,7 +103,7 @@ async def get_operation(
     
     try:
         logger.info(f"[API] Calling operations_service.get({operation_id}) [RequestID: {request_id}]")
-        operation: GetResponse = operations_service.get(
+        operation: GetResponse = await operations_service.get(
             operation_id
         )
 
