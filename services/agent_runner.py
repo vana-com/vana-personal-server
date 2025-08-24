@@ -105,16 +105,9 @@ class DockerAgentRunner:
         
         logger.info(f"[DOCKER-{agent_type}] execute_agent called with stdin_input={bool(stdin_input)} (length={len(stdin_input) if stdin_input else 0})")
         
-        # Use a shared volume location for sibling containers
+        # Use the host's /tmp which is shared between sibling containers
         # This ensures both containers see the same filesystem
-        import uuid
-        workspace_id = str(uuid.uuid4())[:8]
-        shared_base = Path("/tmp/agent-workspaces")
-        
-        # Create the shared base if it doesn't exist (it should from docker-compose volume)
-        shared_base.mkdir(exist_ok=True, mode=0o777)
-        
-        with tempfile.TemporaryDirectory(dir=shared_base, prefix=f"agent_{workspace_id}_") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             # Make the temp directory world-traversable
             Path(temp_dir).chmod(0o755)
             
