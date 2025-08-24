@@ -59,11 +59,9 @@ class BaseAgentProvider(BaseCompute):
         self.cli_path = None
         self.use_api_auth = False
         
-        # Store results and running tasks in memory
-        if not hasattr(self.__class__, "_results"):
-            self.__class__._results = {}
-        if not hasattr(self.__class__, "_tasks"):
-            self.__class__._tasks = {}
+        # Use centralized task store instead of shared class variables
+        from services.task_store import get_task_store
+        self._task_store = get_task_store()
     
     def get_cli_command(self) -> str:
         """Get the CLI command to execute. Subclasses can override."""
