@@ -120,7 +120,9 @@ class DockerAgentRunner:
                 if stdin_input:
                     stdin_file = workspace_path / ".stdin_input"
                     stdin_file.write_text(stdin_input, encoding='utf-8')
-                    logger.debug(f"Wrote stdin input to {stdin_file} (exists: {stdin_file.exists()})")
+                    logger.info(f"[DOCKER] Wrote stdin input to {stdin_file} (exists: {stdin_file.exists()}, size: {stdin_file.stat().st_size} bytes)")
+                    # Also log first 100 chars of content for debugging
+                    logger.debug(f"[DOCKER] Stdin content preview: {stdin_input[:100]}...")
                 
                 # Execute in container with optional streaming
                 result = await self._run_container(
@@ -189,7 +191,8 @@ class DockerAgentRunner:
         if stdin_file:
             # Use cat to pipe the file content to the command's stdin
             # The file is in the current working directory, use relative path
-            full_command = ["sh", "-c", f"cat .stdin_input | {command} {escaped_args}"]
+            # Let's first check what files exist
+            full_command = ["sh", "-c", f"pwd && ls -la && cat .stdin_input | {command} {escaped_args}"]
         else:
             full_command = ["sh", "-c", f"{command} {escaped_args}"]
         
