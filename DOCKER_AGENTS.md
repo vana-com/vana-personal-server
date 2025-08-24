@@ -76,20 +76,35 @@ python3 test_docker_agents.py
 
 The existing test suite will work with Docker agents. The Docker implementation maintains the same API interface as the original pexpect-based execution.
 
-## Security Model
+## Security Model: Sibling Container Pattern
+
+### Architecture
+
+The implementation uses the **Sibling Container Pattern** for maximum security:
+
+1. **Orchestrator Container** (`personal-server`):
+   - Trusted component that handles API requests
+   - Has access to Docker socket to spawn agent containers
+   - Never executes untrusted code directly
+
+2. **Agent Containers** (ephemeral):
+   - Spawned by orchestrator for each agent task
+   - Completely isolated with no Docker socket access
+   - Destroyed after task completion
 
 ### Isolation Boundaries
 
-1. **Network**: Complete isolation (`--network none`)
+1. **Network**: Complete isolation (`--network none`) for agents
 2. **Filesystem**: Read-only container + writable workspace mount
-3. **Process**: Non-root user execution
+3. **Process**: Non-root user execution in agent containers
 4. **Resources**: Memory and CPU limits enforced by Docker
+5. **Docker Access**: Only orchestrator has socket access, agents have none
 
 ### Trust Boundaries
 
-- **Trusted**: Host system, Docker daemon, server process
-- **Untrusted**: Agent code, user data, generated artifacts
-- **Sandbox**: Docker container with security controls
+- **Trusted**: Orchestrator container (personal-server)
+- **Untrusted**: Agent containers (qwen/gemini execution)
+- **Sandbox**: Each agent runs in its own isolated container
 
 ### Data Flow
 

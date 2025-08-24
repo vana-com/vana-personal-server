@@ -48,8 +48,12 @@ services:
     volumes:
       # Mount local directory for development
       - ./:/app
-      # Mount docker socket if agents need to spawn containers
+      # Mount docker socket for sibling container pattern (agents run in separate containers)
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Grant access to Docker socket by adding container user to docker group
+    # Find your Docker GID with: getent group docker | cut -d: -f3
+    group_add:
+      - "999"  # Common Docker GID - adjust to match your host
     networks:
       - personal-server-net
     healthcheck:
