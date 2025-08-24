@@ -119,7 +119,7 @@ class MockOperationsService:
             
             if provider:
                 logger.info(f"[MOCK] Using registered provider for '{mock_grant_file.operation}' [RequestID: {request_id}]")
-                result = provider.execute(mock_grant_file, mock_files_content)
+                result = await provider.execute(mock_grant_file, mock_files_content)
             else:
                 # Mock standard compute response for unregistered operations
                 logger.info(f"[MOCK] No registered provider, using mock response [RequestID: {request_id}]")

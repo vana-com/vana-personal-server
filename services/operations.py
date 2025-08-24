@@ -176,11 +176,11 @@ class OperationsService:
             
             if provider:
                 logger.info(f"[SERVICE] Using registered provider for '{grant_file.operation}' [RequestID: {request_id}]")
-                result = provider.execute(grant_file, files_content)
+                result = await provider.execute(grant_file, files_content)
             else:
                 # Fallback to default compute provider for unregistered operations
                 logger.info(f"[SERVICE] No registered provider for '{grant_file.operation}', using default [RequestID: {request_id}]")
-                result = self.compute.execute(grant_file, files_content)
+                result = await self.compute.execute(grant_file, files_content)
             
             logger.info(f"[SERVICE] Compute operation completed successfully, operation ID: {result.id} [RequestID: {request_id}]")
             return result
