@@ -106,9 +106,13 @@ class DockerAgentRunner:
         logger.info(f"[DOCKER-{agent_type}] execute_agent called with stdin_input={bool(stdin_input)} (length={len(stdin_input) if stdin_input else 0})")
         
         with tempfile.TemporaryDirectory() as temp_dir:
+            # CRITICAL: Make the parent temp directory world-executable (traversable)
+            # Without this, the agent container cannot access anything inside
+            Path(temp_dir).chmod(0o755)
+            
             workspace_path = Path(temp_dir) / "workspace"
             workspace_path.mkdir(mode=0o755)
-            # Make workspace world-readable to avoid UID/GID issues between containers
+            # Ensure workspace is world-readable/executable
             workspace_path.chmod(0o755)
             
             # Create a writable home directory for CLI config files
