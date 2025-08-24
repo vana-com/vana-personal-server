@@ -133,6 +133,11 @@ class DockerAgentRunner:
                     logger.info(f"[DOCKER] Wrote stdin input to {stdin_file} (exists: {stdin_file.exists()}, size: {stdin_file.stat().st_size} bytes, mode: {oct(stdin_file.stat().st_mode)})")
                     # Also log first 100 chars of content for debugging
                     logger.debug(f"[DOCKER] Stdin content preview: {stdin_input[:100]}...")
+                    
+                    # List what's actually in the workspace directory on the host
+                    import os
+                    files_in_workspace = list(os.listdir(workspace_path))
+                    logger.info(f"[DOCKER] Files in workspace on host: {files_in_workspace}")
                 
                 # Execute in container with optional streaming
                 result = await self._run_container(
@@ -241,6 +246,7 @@ class DockerAgentRunner:
         logger.debug(f"[DOCKER-{agent_type}] Command: {' '.join(full_command)}")
         logger.debug(f"[DOCKER-{agent_type}] Network mode: {network_mode}")
         logger.debug(f"[DOCKER-{agent_type}] Has stdin: {stdin_file is not None}")
+        logger.info(f"[DOCKER-{agent_type}] Mounting {workspace_path} -> /workspace/agent-work")
         
         try:
             # Run container asynchronously with streaming if task_store provided
