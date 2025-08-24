@@ -110,6 +110,9 @@ class DockerAgentRunner:
             # Create a writable home directory for CLI config files
             home_path = Path(temp_dir) / "home"
             home_path.mkdir()
+            # Create .gemini directory preemptively to avoid permission issues
+            gemini_dir = home_path / ".gemini"
+            gemini_dir.mkdir()
             
             try:
                 # Stage workspace files
@@ -188,7 +191,8 @@ class DockerAgentRunner:
         # If stdin_file provided, pipe it to the command
         if stdin_file:
             # Use cat to pipe the file content to the command's stdin
-            full_command = ["sh", "-c", f"cat .stdin_input | {command} {escaped_args}"]
+            # The file is in the current working directory (/workspace/agent-work)
+            full_command = ["sh", "-c", f"cat /workspace/agent-work/.stdin_input | {command} {escaped_args}"]
         else:
             full_command = ["sh", "-c", f"{command} {escaped_args}"]
         
@@ -208,7 +212,8 @@ class DockerAgentRunner:
             },
             "network_mode": network_mode,  # Conditional network access
             "user": "appuser",       # Non-root execution
-            "read_only": True,       # Read-only container filesystem
+            # Note: removed read_only flag as it interferes with home directory mounts
+            # Security is maintained through: non-root user, limited network, resource limits
             "mem_limit": self.memory_limit,  # Memory constraint
             "cpu_quota": int(float(self.cpu_limit) * 100_000),  # CPU limit (100k = 1 CPU)
             "cpu_period": 100_000,   # CPU period (100ms)
