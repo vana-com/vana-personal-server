@@ -16,7 +16,10 @@ help: ## Show this help message
 	@echo "Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
-build: ## Build Docker image
+build: ## Build Docker images (server and agent sandbox)
+	@echo "Building agent sandbox image..."
+	@docker build -f Dockerfile.agent -t vana-agent-sandbox . || { echo "Failed to build agent image"; exit 1; }
+	@echo "Building server image..."
 	$(DOCKER_COMPOSE) build
 
 up: ## Start services in background
