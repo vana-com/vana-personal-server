@@ -105,14 +105,21 @@ class DockerAgentRunner:
         
         logger.info(f"[DOCKER-{agent_type}] execute_agent called with stdin_input={bool(stdin_input)} (length={len(stdin_input) if stdin_input else 0})")
         
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # CRITICAL: Make the parent temp directory world-executable (traversable)
-            # Without this, the agent container cannot access anything inside
+        # Use a shared volume location for sibling containers
+        # This ensures both containers see the same filesystem
+        import uuid
+        workspace_id = str(uuid.uuid4())[:8]
+        shared_base = Path("/tmp/agent-workspaces")
+        
+        # Create the shared base if it doesn't exist (it should from docker-compose volume)
+        shared_base.mkdir(exist_ok=True, mode=0o777)
+        
+        with tempfile.TemporaryDirectory(dir=shared_base, prefix=f"agent_{workspace_id}_") as temp_dir:
+            # Make the temp directory world-traversable
             Path(temp_dir).chmod(0o755)
             
             workspace_path = Path(temp_dir) / "workspace"
             workspace_path.mkdir(mode=0o755)
-            # Ensure workspace is world-readable/executable
             workspace_path.chmod(0o755)
             
             # Create a writable home directory for CLI config files
@@ -222,9 +229,19 @@ class DockerAgentRunner:
             "command": full_command,
             "working_dir": "/workspace/agent-work",
             "environment": self._prepare_environment(env_vars),
-            "volumes": {
-                str(workspace_path): {"bind": "/workspace/agent-work", "mode": "rw"}
-            },
+            # Use bind mounts with explicit options
+            "mounts": [
+                {
+                    "type": "bind",
+                    "source": str(workspace_path),
+                    "target": "/workspace/agent-work",
+                    "read_only": False,
+                    # Bind propagation to ensure mount is visible
+                    "bind_options": {
+                        "propagation": "rprivate"
+                    }
+                }
+            ],
             # Use tmpfs for writable directories instead of bind mounts (avoids UID/GID issues)
             "tmpfs": {
                 "/home/appuser": "size=50m,mode=1777",  # Writable home directory

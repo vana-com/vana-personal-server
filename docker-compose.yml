@@ -50,6 +50,8 @@ services:
       - ./:/app
       # Mount docker socket for sibling container pattern (agents run in separate containers)
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Shared volume for agent workspaces (sibling containers need shared filesystem)
+      - agent-workspaces:/tmp/agent-workspaces
     # Grant access to Docker socket by adding container user to docker group
     # Find your Docker GID with: getent group docker | cut -d: -f3
     group_add:
@@ -85,4 +87,7 @@ networks:
     driver: bridge
 
 volumes:
+  agent-workspaces:
+    driver: local
   ganache-data:
+    driver: local
