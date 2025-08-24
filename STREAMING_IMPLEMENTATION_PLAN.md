@@ -1,8 +1,8 @@
 # Streaming Implementation Plan for Agent Execution
 
-## Current Status: Starting Implementation
+## Current Status: Checkpoint 2 Completed
 **Last Updated:** 2024-08-24
-**Current Checkpoint:** Starting Checkpoint 1
+**Current Checkpoint:** Completed Checkpoint 2, Ready for Testing
 
 ## Architecture Decision
 Using **Progressive Enhancement** approach:
@@ -182,14 +182,17 @@ If issues at any checkpoint:
 
 ### Completed
 - [x] Plan created
-- [ ] Checkpoint 1: TaskStore modifications
-- [ ] Checkpoint 2: Docker streaming
+- [x] Checkpoint 1: TaskStore modifications (commit: 6d624e7)
+- [x] Checkpoint 2: Docker streaming (commit: e739826)
+  - Fixed critical async/await bug in get operations
+  - Implemented streaming logs from Docker containers
+  - Added parallel log streaming and status monitoring
 - [ ] Checkpoint 3: Error handling
 - [ ] Checkpoint 4: SSE endpoint
 - [ ] Checkpoint 5: Integration test
 
 ### Next Step
-Implement Checkpoint 1: Modify TaskStore for log accumulation
+Test Checkpoint 3: Memory and error handling with production deployment
 
 ---
 

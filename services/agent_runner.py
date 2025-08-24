@@ -501,16 +501,24 @@ class DockerAgentRunner:
             stdout = logs_result.get("stdout", "")
             exit_code = status_result.get("exit_code", -1)
             
-            # Clean up container
+            # Clean up container (keep failed containers for debugging)
             try:
-                await loop.run_in_executor(None, container.remove)
-                logger.debug(f"[DOCKER-{agent_type}] Container cleaned up")
+                if exit_code == 0:
+                    await loop.run_in_executor(None, container.remove)
+                    logger.debug(f"[DOCKER-{agent_type}] Container cleaned up")
+                else:
+                    logger.warning(f"[DOCKER-{agent_type}] Keeping failed container for debugging: {container.name}")
             except:
                 pass  # Ignore cleanup errors
             
             # Parse and return results
             parsed_json = self._parse_agent_result(stdout)
             has_sentinel = SENTINEL in stdout
+            
+            # Log stdout for debugging failed containers
+            if exit_code != 0:
+                logger.error(f"[DOCKER-{agent_type}] Container failed with exit code {exit_code}")
+                logger.error(f"[DOCKER-{agent_type}] Stdout (first 500 chars): {stdout[:500]}")
             
             if parsed_json:
                 status = parsed_json.get("status", "ok" if has_sentinel else "error")
