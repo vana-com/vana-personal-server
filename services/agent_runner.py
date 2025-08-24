@@ -108,11 +108,8 @@ class DockerAgentRunner:
             workspace_path.mkdir()
             
             # Create a writable home directory for CLI config files
-            home_path = Path(temp_dir) / "home"
-            home_path.mkdir()
-            # Create .gemini directory preemptively to avoid permission issues
-            gemini_dir = home_path / ".gemini"
-            gemini_dir.mkdir()
+            # Don't use bind mount for home - it has UID/GID issues
+            # Instead, we'll use tmpfs or let the container create it
             
             try:
                 # Stage workspace files
@@ -123,10 +120,11 @@ class DockerAgentRunner:
                 if stdin_input:
                     stdin_file = workspace_path / ".stdin_input"
                     stdin_file.write_text(stdin_input, encoding='utf-8')
+                    logger.debug(f"Wrote stdin input to {stdin_file} (exists: {stdin_file.exists()})")
                 
                 # Execute in container with optional streaming
                 result = await self._run_container(
-                    agent_type, command, args, workspace_path, home_path, env_vars, 
+                    agent_type, command, args, workspace_path, env_vars, 
                     operation_id, task_store, stdin_file
                 )
                 
@@ -167,7 +165,6 @@ class DockerAgentRunner:
         command: str,
         args: List[str],
         workspace_path: Path,
-        home_path: Path,
         env_vars: Dict[str, str],
         operation_id: str,
         task_store=None,
@@ -191,8 +188,9 @@ class DockerAgentRunner:
         # If stdin_file provided, pipe it to the command
         if stdin_file:
             # Use cat to pipe the file content to the command's stdin
-            # The file is in the current working directory (/workspace/agent-work)
-            full_command = ["sh", "-c", f"cat /workspace/agent-work/.stdin_input | {command} {escaped_args}"]
+            # The file is in the current working directory, use relative path
+            # First, let's check if the file exists and log it
+            full_command = ["sh", "-c", f"ls -la .stdin_input 2>&1 && cat .stdin_input | {command} {escaped_args}"]
         else:
             full_command = ["sh", "-c", f"{command} {escaped_args}"]
         
@@ -207,17 +205,23 @@ class DockerAgentRunner:
             "working_dir": "/workspace/agent-work",
             "environment": self._prepare_environment(env_vars),
             "volumes": {
-                str(workspace_path): {"bind": "/workspace/agent-work", "mode": "rw"},
-                str(home_path): {"bind": "/home/appuser", "mode": "rw"}
+                str(workspace_path): {"bind": "/workspace/agent-work", "mode": "rw"}
+            },
+            # Use tmpfs for writable directories instead of bind mounts (avoids UID/GID issues)
+            "tmpfs": {
+                "/home/appuser": "size=50m,mode=1777",  # Writable home directory
+                "/tmp": "size=100m,mode=1777",  # Temp directory
             },
             "network_mode": network_mode,  # Conditional network access
             "user": "appuser",       # Non-root execution
-            # Note: removed read_only flag as it interferes with home directory mounts
-            # Security is maintained through: non-root user, limited network, resource limits
             "mem_limit": self.memory_limit,  # Memory constraint
             "cpu_quota": int(float(self.cpu_limit) * 100_000),  # CPU limit (100k = 1 CPU)
             "cpu_period": 100_000,   # CPU period (100ms)
             "detach": True,
+            # Security hardening as suggested
+            "cap_drop": ["ALL"],  # Drop all capabilities
+            "security_opt": ["no-new-privileges:true"],  # Prevent privilege escalation
+            "pids_limit": 256,  # Prevent fork bombs
         }
         
         logger.info(f"[DOCKER-{agent_type}] Starting container for {operation_id}")

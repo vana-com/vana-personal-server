@@ -95,7 +95,7 @@ class GeminiAgentProvider(BaseAgentProvider):
             env_vars.update({
                 "GEMINI_API_KEY": self.api_key,
             })
-            logger.debug(f"Setting GEMINI_API_KEY in environment (key length: {len(self.api_key)})")
+            logger.debug(f"GEMINI_API_KEY present in environment: {bool(self.api_key)}")
             
             # Add Vertex AI flag if enabled
             if self.use_vertex_ai:
