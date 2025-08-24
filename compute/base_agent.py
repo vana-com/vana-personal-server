@@ -317,7 +317,9 @@ class BaseAgentProvider(BaseCompute, ABC):
         stdin_input = None
         if self.AGENT_TYPE == "gemini" and prompt:
             stdin_input = prompt
-            logger.debug(f"[{self.AGENT_TYPE}] Using stdin for prompt (length: {len(prompt)})")
+            logger.info(f"[{self.AGENT_TYPE}] Using stdin for prompt (length: {len(prompt)})")
+        else:
+            logger.info(f"[{self.AGENT_TYPE}] Not using stdin (agent_type={self.AGENT_TYPE}, has_prompt={bool(prompt)})")
         
         # Execute in Docker container with streaming
         result = await self.docker_runner.execute_agent(

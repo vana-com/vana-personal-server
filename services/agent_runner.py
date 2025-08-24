@@ -103,6 +103,8 @@ class DockerAgentRunner:
         """
         start_time = time.time()
         
+        logger.info(f"[DOCKER-{agent_type}] execute_agent called with stdin_input={bool(stdin_input)} (length={len(stdin_input) if stdin_input else 0})")
+        
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace_path = Path(temp_dir) / "workspace"
             workspace_path.mkdir()
