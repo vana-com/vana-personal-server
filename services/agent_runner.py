@@ -102,13 +102,17 @@ class DockerAgentRunner:
             workspace_path = Path(temp_dir) / "workspace"
             workspace_path.mkdir()
             
+            # Create a writable home directory for CLI config files
+            home_path = Path(temp_dir) / "home"
+            home_path.mkdir()
+            
             try:
                 # Stage workspace files
                 self._stage_workspace_files(workspace_path, workspace_files)
                 
                 # Execute in container with optional streaming
                 result = await self._run_container(
-                    agent_type, command, args, workspace_path, env_vars, operation_id, task_store
+                    agent_type, command, args, workspace_path, home_path, env_vars, operation_id, task_store
                 )
                 
                 # Process artifacts from workspace
@@ -148,6 +152,7 @@ class DockerAgentRunner:
         command: str,
         args: List[str],
         workspace_path: Path,
+        home_path: Path,
         env_vars: Dict[str, str],
         operation_id: str,
         task_store=None
@@ -175,7 +180,8 @@ class DockerAgentRunner:
             "working_dir": "/workspace/agent-work",
             "environment": self._prepare_environment(env_vars),
             "volumes": {
-                str(workspace_path): {"bind": "/workspace/agent-work", "mode": "rw"}
+                str(workspace_path): {"bind": "/workspace/agent-work", "mode": "rw"},
+                str(home_path): {"bind": "/home/appuser", "mode": "rw"}
             },
             "network_mode": "none",  # Complete network isolation
             "user": "appuser",       # Non-root execution
