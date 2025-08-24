@@ -47,6 +47,10 @@ class GeminiAgentProvider(BaseAgentProvider):
 
         logger.info(f"Initialized GeminiAgentProvider (auth mode: {'API' if self.use_api_auth else 'OAuth'})")
 
+    def get_cli_command(self) -> str:
+        """Get the CLI command to execute."""
+        return "gemini"
+    
     def get_cli_args(self, prompt: str) -> List[str]:
         """Get CLI arguments for Gemini CLI."""
         # Use -y (yolo mode) and -p for prompt mode to enable write tools

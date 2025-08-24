@@ -52,6 +52,10 @@ class QwenCodeAgentProvider(BaseAgentProvider):
 
         logger.info(f"Initialized QwenCodeAgentProvider (auth mode: {'API' if self.use_api_auth else 'OAuth'})")
 
+    def get_cli_command(self) -> str:
+        """Get the CLI command to execute."""
+        return "qwen"
+    
     def get_cli_args(self, prompt: str) -> List[str]:
         """Get CLI arguments for qwen-code."""
         # Use -p for prompt mode and -y for YOLO mode (auto-accept)

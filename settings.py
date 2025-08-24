@@ -238,6 +238,37 @@ class Settings(BaseSettings):
         description="Path to gemini CLI binary (defaults to 'gemini' on PATH)"
     )
 
+    # Docker Agent Execution Configuration
+    docker_agent_image: str = Field(
+        default="vana-agent-sandbox",
+        alias="DOCKER_AGENT_IMAGE",
+        description="Docker image name for agent sandbox execution"
+    )
+    
+    docker_agent_memory_limit: str = Field(
+        default="512m",
+        alias="DOCKER_AGENT_MEMORY_LIMIT",
+        description="Memory limit for Docker agent containers (e.g., '512m', '1g')"
+    )
+    
+    docker_agent_timeout_sec: int = Field(
+        default=300,
+        alias="DOCKER_AGENT_TIMEOUT_SEC",
+        description="Docker container execution timeout in seconds"
+    )
+    
+    docker_agent_max_output_mb: int = Field(
+        default=10,
+        alias="DOCKER_AGENT_MAX_OUTPUT_MB",
+        description="Maximum output capture size for Docker agents in megabytes"
+    )
+    
+    docker_agent_cpu_limit: Optional[str] = Field(
+        default="1.0",
+        alias="DOCKER_AGENT_CPU_LIMIT",
+        description="CPU limit for Docker agents (e.g., '0.5', '1.0', '2.0')"
+    )
+
     @field_validator('replicate_api_token')
     @classmethod
     def validate_replicate_token(cls, v):

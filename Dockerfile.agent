@@ -1,0 +1,53 @@
+# Agent Sandbox Dockerfile - Minimal secure container for AI agent execution
+# Implements "Agent-in-a-Box" pattern with strict security controls
+
+FROM node:20-alpine
+
+# Install minimal system dependencies
+RUN apk add --no-cache \
+    # Basic utilities for agent CLIs
+    ca-certificates \
+    curl \
+    git \
+    # Required for some npm packages
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user for secure execution
+RUN adduser -D -s /bin/sh appuser
+
+# Set working directory
+WORKDIR /workspace
+
+# Install agent CLI dependencies
+# Copy package files for reproducible builds
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production --no-audit --no-fund \
+    && npm cache clean --force
+
+# Ensure CLIs are accessible in PATH
+ENV PATH="/workspace/node_modules/.bin:${PATH}"
+
+# Create output directory with proper permissions
+RUN mkdir -p /workspace/out && chown -R appuser:appuser /workspace
+
+# Switch to non-root user
+USER appuser
+
+# Set secure defaults
+ENV HOME=/home/appuser
+ENV USER=appuser
+ENV CI=1
+ENV NO_COLOR=1
+
+# Disable npm update notifier and telemetry
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV DISABLE_OPENCOLLECTIVE=true
+
+# Set working directory as volume mount point
+VOLUME ["/workspace"]
+
+# Default command (will be overridden by agent runner)
+CMD ["sh", "-c", "echo 'Agent sandbox ready' && sleep 10"]

@@ -1,13 +1,11 @@
 """
 Refactored base agent provider with clean separation of concerns.
-Uses centralized task store instead of shared class variables.
+Uses centralized task store and Docker-based secure execution.
 """
 import asyncio
 import json
 import logging
 import os
-import re
-import shutil
 import tempfile
 import time
 from abc import ABC, abstractmethod
@@ -15,24 +13,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import pexpect
-
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
 from domain.entities import GrantFile
 from services.task_store import TaskStatus, get_task_store
+from services.agent_runner import DockerAgentRunner
 
 logger = logging.getLogger(__name__)
 
 # Sentinel to mark agent completion
 SENTINEL = "__AGENT_DONE__"
-JSON_LINE_RE = re.compile(r'^\s*\{.*\}\s*$')
-
-def _redact_sensitive_data(text: str, api_key: str = None) -> str:
-    """Redact API keys from output."""
-    if api_key and len(api_key) > 8:
-        # Redact all but first 4 chars
-        text = text.replace(api_key, api_key[:4] + "[REDACTED]")
-    return text
 
 
 class BaseAgentProvider(BaseCompute, ABC):
@@ -45,13 +34,14 @@ class BaseAgentProvider(BaseCompute, ABC):
     CLI_NAME = "agent"
     AGENT_TYPE = "base"
     
-    def __init__(self, task_store=None, artifact_storage=None):
+    def __init__(self, task_store=None, artifact_storage=None, docker_runner=None):
         """
         Initialize with injected dependencies.
         
         Args:
             task_store: Task storage service (uses global if not provided)
             artifact_storage: Artifact storage service (lazy loaded if not provided)
+            docker_runner: Docker agent runner (lazy loaded if not provided)
         """
         # Configuration (subclasses should set these)
         self.settings = None
@@ -64,6 +54,7 @@ class BaseAgentProvider(BaseCompute, ABC):
         # Injected dependencies
         self._task_store = task_store or get_task_store()
         self._artifact_storage = artifact_storage
+        self._docker_runner = docker_runner
     
     @property
     def artifact_storage(self):
@@ -72,6 +63,22 @@ class BaseAgentProvider(BaseCompute, ABC):
             from services.artifact_storage import ArtifactStorageService
             self._artifact_storage = ArtifactStorageService()
         return self._artifact_storage
+    
+    @property
+    def docker_runner(self):
+        """Lazy load Docker agent runner with configuration from settings."""
+        if self._docker_runner is None:
+            from settings import get_settings
+            settings = get_settings()
+            
+            self._docker_runner = DockerAgentRunner(
+                image_name=settings.docker_agent_image,
+                memory_limit=settings.docker_agent_memory_limit,
+                timeout_sec=settings.docker_agent_timeout_sec,
+                max_output_bytes=settings.docker_agent_max_output_mb * 1_000_000,
+                cpu_limit=settings.docker_agent_cpu_limit or "1.0"
+            )
+        return self._docker_runner
     
     @abstractmethod
     def get_cli_command(self) -> str:
@@ -281,137 +288,31 @@ class BaseAgentProvider(BaseCompute, ABC):
         workspace: str,
         operation_id: str
     ) -> Dict:
-        """Execute CLI command and capture output."""
-        # Run synchronously in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            self._run_cli_sync,
-            command, args, workspace, operation_id
-        )
-    
-    def _run_cli_sync(
-        self,
-        command: str,
-        args: List[str],
-        workspace: str,
-        operation_id: str
-    ) -> Dict[str, Any]:
-        """Synchronous CLI execution with pexpect."""
-        t0 = time.time()
+        """Execute CLI command in secure Docker container."""
+        # Convert workspace files to the format expected by Docker runner
         workspace_path = Path(workspace)
+        workspace_files = {}
         
-        # Setup environment
-        env = os.environ.copy()
-        env["CI"] = "1"
-        env["NO_COLOR"] = "1"
-        env.update(self.get_env_overrides())
+        # Load all files in workspace for Docker mounting
+        for file_path in workspace_path.iterdir():
+            if file_path.is_file():
+                workspace_files[file_path.name] = file_path.read_bytes()
         
-        child = None
-        captured = bytearray()
-        logs = []
-        artifacts = []
-        parsed_json = None
+        # Get environment variables for the agent
+        env_vars = self.get_env_overrides()
         
-        try:
-            logger.info(f"[{self.AGENT_TYPE}] Spawning {command} in {workspace}")
-            
-            child = pexpect.spawn(
-                command,
-                args=args,
-                cwd=workspace,
-                env=env,
-                encoding="utf-8",
-                timeout=self.timeout_sec,
-            )
-            
-            # Read output until sentinel or timeout
-            last_log = time.time()
-            while True:
-                try:
-                    chunk = child.read_nonblocking(size=4096, timeout=5)
-                except pexpect.TIMEOUT:
-                    elapsed = time.time() - t0
-                    if elapsed > self.timeout_sec:
-                        logs.append(f"Timeout after {self.timeout_sec}s")
-                        break
-                    if time.time() - last_log > 10:
-                        logger.info(f"[{self.AGENT_TYPE}] Still running... ({elapsed:.1f}s)")
-                        last_log = time.time()
-                    continue
-                except pexpect.EOF:
-                    logger.info(f"[{self.AGENT_TYPE}] Process completed")
-                    break
-                else:
-                    captured.extend(chunk.encode("utf-8", errors="ignore"))
-                    if len(captured) >= self.max_stdout_bytes:
-                        logs.append("Max output size reached")
-                        break
-                    if SENTINEL in chunk:
-                        logger.info(f"[{self.AGENT_TYPE}] Found completion sentinel")
-                        break
-            
-            # Terminate process
-            if child and child.isalive():
-                child.terminate(force=True)
-            if child:
-                child.close(force=True)
-            
-            # Process output
-            stdout_text = captured.decode("utf-8", errors="ignore")
-            stdout_text = _redact_sensitive_data(stdout_text, self.api_key)
-            
-            logs.append(f"Execution time: {time.time() - t0:.2f}s")
-            
-            # Parse JSON result
-            for line in reversed(stdout_text.splitlines()):
-                if JSON_LINE_RE.match(line.strip()):
-                    try:
-                        parsed_json = json.loads(line.strip())
-                        logger.info(f"[{self.AGENT_TYPE}] Parsed JSON result")
-                        break
-                    except json.JSONDecodeError:
-                        pass
-            
-            # Collect artifacts
-            if parsed_json and isinstance(parsed_json.get("artifacts"), list):
-                for rel_path in parsed_json["artifacts"]:
-                    artifact_path = (workspace_path / rel_path).resolve()
-                    try:
-                        artifact_path.relative_to(workspace_path)  # Security check
-                        if artifact_path.is_file():
-                            artifacts.append({
-                                "name": str(Path(rel_path)),
-                                "content": artifact_path.read_bytes(),
-                            })
-                            logger.info(f"[{self.AGENT_TYPE}] Collected artifact: {rel_path}")
-                    except (ValueError, FileNotFoundError) as e:
-                        logs.append(f"Artifact error: {rel_path}: {e}")
-            
-            # Determine status
-            has_sentinel = SENTINEL in stdout_text
-            status = (parsed_json or {}).get("status", "ok" if has_sentinel else "error")
-            summary = (parsed_json or {}).get("summary", "Task completed" if status == "ok" else "Task failed")
-            
-            return {
-                "status": status,
-                "summary": summary,
-                "result": parsed_json or {},
-                "artifacts": artifacts,
-                "logs": logs,
-                "stdout": stdout_text[:10000] if len(stdout_text) > 10000 else stdout_text  # Limit for storage
-            }
-            
-        except Exception as e:
-            logger.error(f"[{self.AGENT_TYPE}] Execution failed: {e}")
-            return {
-                "status": "error",
-                "summary": f"Execution failed: {type(e).__name__}",
-                "result": {},
-                "artifacts": [],
-                "logs": logs + [str(e)],
-                "stdout": ""
-            }
+        # Execute in Docker container
+        result = await self.docker_runner.execute_agent(
+            agent_type=self.AGENT_TYPE,
+            command=command,
+            args=args,
+            workspace_files=workspace_files,
+            env_vars=env_vars,
+            operation_id=operation_id
+        )
+        
+        return result
+    
     
     async def _process_artifacts(
         self, 
@@ -420,27 +321,27 @@ class BaseAgentProvider(BaseCompute, ABC):
         grantee_address: str,
         result: Dict
     ) -> List[Dict]:
-        """Process and store artifacts from agent execution."""
+        """Process and store artifacts from Docker agent execution."""
         artifacts_metadata = []
         
-        out_dir = os.path.join(workspace, "out")
-        if os.path.exists(out_dir):
-            for filename in os.listdir(out_dir):
-                filepath = os.path.join(out_dir, filename)
-                if os.path.isfile(filepath):
-                    with open(filepath, 'rb') as f:
-                        content = f.read()
-                    
-                    # Store in artifact storage
-                    await self.artifact_storage.store_artifact(
-                        operation_id, filename, content, grantee_address
-                    )
-                    
-                    # Add metadata
-                    artifacts_metadata.append({
-                        "name": filename,
-                        "size": len(content),
-                        "artifact_path": f"out/{filename}"
-                    })
+        # Docker runner already collected artifacts and included them in result
+        artifacts = result.get("artifacts", [])
+        
+        for artifact in artifacts:
+            content = artifact.get("content")
+            filename = artifact.get("name")
+            
+            if content and filename:
+                # Store in artifact storage
+                await self.artifact_storage.store_artifact(
+                    operation_id, filename, content, grantee_address
+                )
+                
+                # Add metadata for result
+                artifacts_metadata.append({
+                    "name": filename,
+                    "size": artifact.get("size", len(content)),
+                    "artifact_path": artifact.get("artifact_path", f"out/{filename}")
+                })
         
         return artifacts_metadata
