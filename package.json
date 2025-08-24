@@ -4,7 +4,7 @@
   "description": "CLI dependencies for AI agents in personal server",
   "private": true,
   "dependencies": {
-    "@google/gemini-cli": "^1.0.0",
+    "@google/gemini-cli": "latest",
     "@qwen-code/qwen-code": "latest"
   },
   "engines": {

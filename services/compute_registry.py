@@ -5,7 +5,7 @@ Implements factory pattern for extensible agent/compute provider management.
 import logging
 from typing import Dict, Type, Optional
 from compute.base import BaseCompute
-from compute.replicate_llm_inference import ReplicateLlmInference
+from compute.replicate import ReplicateLlmInference
 from compute.qwen_agent import QwenCodeAgentProvider
 from compute.gemini_agent import GeminiAgentProvider
 
