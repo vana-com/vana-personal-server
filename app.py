@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from api.operations import router as operations_router
 from api.identity import router as identity_router
+from api.artifacts import router as artifacts_router
 
 # Configure logging
 logging.basicConfig(
@@ -47,6 +48,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 app.include_router(operations_router, prefix="/api/v1")
 app.include_router(identity_router, prefix="/api/v1")
+app.include_router(artifacts_router, prefix="/api/v1")
 
 if __name__ == "__main__":
     import uvicorn

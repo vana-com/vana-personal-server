@@ -1,0 +1,807 @@
+here’s a tight set of ways to prove “qwen-code as headless, one-shot agent” locally without fancy deploys:
+
+1) Define a one-shot contract (what we expect)
+
+Input: goal string + staged workspace (files).
+
+Output: a single JSON block printed to stdout as the last line, e.g.
+
+{"status":"ok","summary":"…","artifacts":["out/summary.md","out/diff.patch"],"logs_prefix":"LOG:"}
+
+
+Sentinel: require the agent to end with a single line __QWEN_DONE__ after the JSON. Your harness reads until it sees that sentinel or times out.
+
+Time bound: default 180s (configurable).
+
+Workspace rule: agent must only read/write under cwd.
+
+2) Minimal headless harness (subprocess, no TTY gymnastics)
+
+Start qwen via subprocess.Popen with:
+
+cwd=<tempdir>, env set with OPENAI_*.
+
+stdin=PIPE, stdout=PIPE, stderr=PIPE.
+
+Write one prompt (see Prompt below), then immediately write /exit\n.
+
+Stream stdout; stop when you see __QWEN_DONE__ (or timeout).
+
+Parse the last JSON line; copy declared artifacts before deleting the tempdir.
+
+Treat anything printed with LOG: as logs; return separately.
+
+This keeps it simple: no pexpect, no prompt detection. If /exit is processed after the model responds, you still get output; if not, the timeout/kill path triggers.
+
+3) The Prompt (makes it behave “batchy”)
+System:
+You are running in a headless, single-shot batch mode.
+Work only inside the current directory.
+
+User:
+GOAL:
+{goal}
+
+CONSTRAINTS:
+- No follow-up questions. Assume sensible defaults.
+- Produce work products inside ./out/.
+- At completion, print exactly one JSON line (no backticks) describing results:
+  {"status":"ok|error","summary":"<one line>","artifacts":["./out/..."],"notes":"<optional>"}
+- Then print exactly: __QWEN_DONE__
+- Do not print anything after __QWEN_DONE__.
+
+If unsure, do your best and still produce the JSON + sentinel.
+
+4) Quick local validation matrix
+
+Run these as smoke tests to see if the CLI behaves deterministically:
+
+Pure text task
+
+echo -e "Summarize all *.py files into ./out/summary.md\n/exit" | (cd /tmp/ws && qwen)
+
+
+Harness version uses the Prompt; assert summary.md exists and JSON+sentinel is present.
+
+Edit-in-place
+Goal: “find TODOs, write a report to ./out/todos.md”.
+
+Generate diff
+Goal: “propose changes; write unified diff to ./out/diff.patch (no apply).”
+
+Large output
+Goal: “list all endpoints; write ./out/endpoints.json.”
+
+Measure: completion within timeout, JSON parsable, artifacts present. Record stderr for triage.
+
+5) Failure handling you’ll want
+
+Timeout → kill process group, return {"status":"error","summary":"timeout"}.
+
+No sentinel but JSON present → accept JSON if last valid line; otherwise error.
+
+No artifacts → still return ok with empty list (don’t 500).
+
+Stderr non-empty → include in notes or logs.
+
+6) Security/ops guardrails for MVP
+
+Mask OPENAI_API_KEY in captured stderr/logs.
+
+Limit runtime (CPU time or wall clock), and max output bytes (e.g., 2MB).
+
+Create workspace via tempfile.mkdtemp(prefix="qwen_", dir=TMPDIR); chmod 700.
+
+Always shutil.rmtree in finally, after copying declared artifacts to a safe output dir.
+
+7) “Is it even feasible?” litmus
+
+If the CLI ignores /exit sent via stdin (keeps waiting), try sending /exit first, then the task, or send both separated by newlines — one of these usually works.
+
+If it still hangs, fall back to the same harness but kill on sentinel timeout; in practice you’ll still validate viability because most tasks complete and print before idle wait.
+
+8) What to wire in your code (tiny surface)
+
+settings.py: QWEN_API_URL, QWEN_MODEL_NAME, QWEN_API_KEY, QWEN_TIMEOUT_SEC, QWEN_MAX_STDOUT_MB.
+
+compute/qwen_code_agent.py:
+
+Build workspace, dump decrypted files, write README_TASK.md (nice for debugging).
+
+Launch qwen, send Prompt + /exit.
+
+Stream-capture, parse JSON, collect artifacts, cleanup.
+
+get/cancel: NotImplementedError for now.
+
+services/operations.py:
+
+If operation == "agentic_task", route to the new provider; return its JSON + base64 artifacts (or presigned paths) to the caller.
+
+If you want, I can sketch the harness function signature + the exact subprocess.Popen pattern next.
+
+You said:
+What is the least brittle approach?
+ChatGPT said:
+Thought for 10s
+
+Short answer: spawn it in a pseudo-TTY with a strict, tool-agnostic contract (sentinel + JSON), not a plain pipe. Avoid matching its prompt or UI.
+
+Why this is least brittle:
+
+Many CLIs change behavior on TTY vs. pipe; a pty (e.g., pexpect/ptyprocess) keeps behavior stable across versions.
+
+A protocol you control (single JSON line + __QWEN_DONE__) avoids scraping prompts or guessing when it’s “finished”.
+
+You can stream outputs, enforce timeouts, and send a clean /exit—then hard-stop on timeout.
+
+Recipe (stable pieces):
+
+Version-pin @qwen-code/qwen-code (exact semver).
+
+Launch via pty; set deterministic env: CI=1, NO_COLOR=1, OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL.
+
+Prompt contract: instruct it to write artifacts under ./out/, then print exactly one JSON line and __QWEN_DONE__, then nothing else.
+
+I/O control: send the task, then /exit. Read until sentinel or timeout; ignore any prompt text.
+
+Workspace: temp dir (0700), staged inputs; copy declared artifacts out; always rmtree in finally.
+
+Guards: wall-clock timeout, max stdout bytes, redact keys in logs. Kill the whole process group if needed.
+
+Fallback: if sentinel not seen but last line is valid JSON—accept; else return structured error.
+
+What to avoid (brittle):
+
+Plain echo ... | qwen (pipe mode often changes buffering & exit behavior).
+
+Waiting for a specific prompt string (>), ANSI sequences, or menu text.
+
+Relying on internal commands beyond /exit.
+
+If you want, I can drop in a minimal pexpect harness stub you can reuse in compute/qwen_code_agent.py that implements this contract.
+
+You said:
+sure
+ChatGPT said:
+Thought for 4 seconds
+
+here’s a tight, reusable pexpect harness you can drop into compute/qwen_code_agent.py. it runs qwen in a PTY, enforces a sentinel+JSON contract, and cleans up safely.
+
+# pip install pexpect
+from __future__ import annotations
+import json, os, re, shutil, tempfile, time
+from pathlib import Path
+import pexpect
+from typing import Dict, Any, List, Optional
+
+SENTINEL = "__QWEN_DONE__"
+JSON_LINE_RE = re.compile(r'^\s*\{.*\}\s*$')
+
+def _redact(s: str) -> str:
+    key = os.environ.get("OPENAI_API_KEY") or ""
+    if key and key in s:
+        s = s.replace(key, "****REDACTED****")
+    return s
+
+def run_qwen_oneshot(
+    goal: str,
+    files_content: Dict[str, bytes],
+    env_overrides: Optional[Dict[str, str]] = None,
+    timeout_sec: int = 180,
+    max_stdout_bytes: int = 2_000_000,
+    qwen_cmd: str = "qwen",
+) -> Dict[str, Any]:
+    """
+    Headless one-shot execution of qwen-code with a strict contract:
+      - Writes staged inputs into a secure temp workspace
+      - Sends a bounded prompt + '/exit'
+      - Reads until SENTINEL or timeout
+      - Parses the last valid JSON line for {status, summary, artifacts, ...}
+      - Copies artifacts out before cleanup
+    Returns: dict(status, summary, artifacts=[{"name":..., "bytes":...}], logs)
+    """
+    t0 = time.time()
+    workspace = Path(tempfile.mkdtemp(prefix="qwen_", dir=None))
+    outdir = workspace / "out"
+    outdir.mkdir(parents=True, exist_ok=True)
+    os.chmod(workspace, 0o700)
+
+    # stage inputs
+    for rel, blob in files_content.items():
+        dest = workspace / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(blob)
+
+    # helpful breadcrumb for the agent (optional)
+    (workspace / "README_TASK.md").write_text(
+        f"# Headless one-shot run\n\nGoal:\n{goal}\n\n"
+        "Write outputs only under ./out.\n"
+        f"Finish by printing one JSON line then {SENTINEL} on its own line.\n",
+        encoding="utf-8",
+    )
+
+    # env
+    env = os.environ.copy()
+    env["CI"] = "1"
+    env["NO_COLOR"] = "1"
+    if env_overrides:
+        env.update(env_overrides)
+
+    # prompt contract
+    prompt = (
+        "System:\n"
+        "You are running in a headless, single-shot batch mode. "
+        "Work only inside the current directory.\n\n"
+        "User:\n"
+        "CONSTRAINTS:\n"
+        "- No follow-up questions. Assume sensible defaults.\n"
+        "- Produce work products inside ./out/.\n"
+        "- At completion, print exactly one JSON line (no backticks) describing results:\n"
+        '  {"status":"ok|error","summary":"<one line>","artifacts":["./out/..."],"notes":"<optional>"}\n'
+        f"- Then print exactly: {SENTINEL}\n"
+        f"- Do not print anything after {SENTINEL}.\n\n"
+        f"GOAL:\n{goal}\n"
+    )
+
+    child = None
+    captured: bytearray = bytearray()
+    logs: List[str] = []
+    artifacts_payload: List[Dict[str, Any]] = []
+    parsed_json: Dict[str, Any] | None = None
+
+    try:
+        child = pexpect.spawn(
+            qwen_cmd,
+            cwd=str(workspace),
+            env=env,
+            encoding="utf-8",
+            timeout=timeout_sec,
+        )
+
+        # Send task then exit command. We don't rely on any prompt string.
+        child.sendline(prompt)
+        child.sendline("/exit")
+
+        # Read until sentinel or timeout; enforce a max output budget.
+        while True:
+            try:
+                chunk = child.read_nonblocking(size=4096, timeout=5)
+            except pexpect.TIMEOUT:
+                # soft loop; check global timeout
+                pass
+            except pexpect.EOF:
+                break
+            else:
+                captured.extend(chunk.encode("utf-8", errors="ignore"))
+                if len(captured) >= max_stdout_bytes:
+                    logs.append("max_stdout_bytes reached; truncating output.")
+                    break
+                if SENTINEL in chunk:
+                    # we have the sentinel; can stop reading more
+                    break
+
+            if (time.time() - t0) > timeout_sec:
+                logs.append(f"timeout {timeout_sec}s reached; terminating.")
+                try:
+                    child.terminate(force=True)
+                except Exception:
+                    pass
+                break
+
+        # final drain (best-effort)
+        try:
+            child.close(force=True)
+        except Exception:
+            pass
+
+        stdout_text = captured.decode("utf-8", errors="ignore")
+        stdout_text = _redact(stdout_text)
+        logs.append(f"raw_stdout_bytes={len(stdout_text.encode('utf-8'))}")
+
+        # find the last JSON-looking line
+        last_json_line = None
+        for line in stdout_text.splitlines()[::-1]:
+            if JSON_LINE_RE.match(line.strip()):
+                last_json_line = line.strip()
+                break
+
+        if last_json_line:
+            try:
+                parsed_json = json.loads(last_json_line)
+            except json.JSONDecodeError as e:
+                logs.append(f"failed to parse JSON line: {e}")
+
+        # collect artifacts if declared
+        artifacts_list = []
+        if parsed_json and isinstance(parsed_json.get("artifacts"), list):
+            artifacts_list = parsed_json["artifacts"]
+
+        for relpath in artifacts_list:
+            p = (workspace / relpath).resolve()
+            try:
+                # ensure within workspace
+                p.relative_to(workspace)
+            except Exception:
+                logs.append(f"ignored artifact outside workspace: {relpath}")
+                continue
+            if p.is_file():
+                artifacts_payload.append(
+                    {"name": str(Path(relpath)), "bytes": p.read_bytes()}
+                )
+            elif p.is_dir():
+                # zip directories for convenience (optional: keep simple for MVP)
+                logs.append(f"directory artifact not packaged: {relpath}")
+
+        status = (parsed_json or {}).get("status") or ("ok" if SENTINEL in stdout_text else "error")
+        summary = (parsed_json or {}).get("summary") or ("completed" if status == "ok" else "incomplete")
+
+        return {
+            "status": status,
+            "summary": summary,
+            "result": parsed_json or {},
+            "artifacts": artifacts_payload,
+            "logs": logs,
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "summary": f"exception: {type(e).__name__}",
+            "result": {},
+            "artifacts": [],
+            "logs": logs + [str(e)],
+        }
+    finally:
+        # hard cleanup
+        try:
+            shutil.rmtree(workspace, ignore_errors=True)
+        except Exception:
+            pass
+
+
+how to call it in your provider
+
+# inside QwenCodeAgentProvider.execute(...)
+env_overrides = {
+    "OPENAI_API_KEY": settings.QWEN_API_KEY,
+    "OPENAI_BASE_URL": settings.QWEN_API_URL,
+    "OPENAI_MODEL": settings.QWEN_MODEL_NAME,
+}
+res = run_qwen_oneshot(
+    goal=grant_file.parameters["goal"],
+    files_content=decrypted_files_dict,  # {"path/inside/ws": b"...", ...}
+    env_overrides=env_overrides,
+    timeout_sec=settings.QWEN_TIMEOUT_SEC,
+    max_stdout_bytes=settings.QWEN_MAX_STDOUT_MB,
+    qwen_cmd=settings.QWEN_CLI_PATH if getattr(settings, "QWEN_CLI_PATH", None) else "qwen",
+)
+
+
+notes
+
+set QWEN_CLI_PATH if qwen isn’t on PATH.
+
+this avoids brittle prompt matching; the only contract is: print one JSON line and then __QWEN_DONE__.
+
+you can return artifacts as base64 or persist them and return references, depending on the rest of your API.
+
+want me to wrap this into a full QwenCodeAgentProvider file + the services/operations.py hook next?
+
+You said:
+sure
+ChatGPT said:
+Thought for 5s
+
+awesome — here are the drop-in changes. they’re minimal, headless, and follow the sentinel+JSON contract we discussed.
+
+settings.py (additions)
+# ...existing imports...
+from pydantic import Field
+
+# ...existing Settings class...
+class Settings(BaseSettings):
+    # --- Qwen Code (headless agent) ---
+    QWEN_API_URL: str | None = Field(default=None, description="OpenAI-compatible base URL")
+    QWEN_MODEL_NAME: str | None = Field(default=None, description="Model name, e.g. qwen/qwen3-coder")
+    QWEN_API_KEY: str | None = Field(default=None, description="API key for the provider")
+    QWEN_TIMEOUT_SEC: int = Field(default=180, description="Wall-clock timeout for a run")
+    QWEN_MAX_STDOUT_MB: int = Field(default=2_000_000, description="Max stdout bytes for safety")
+    QWEN_CLI_PATH: str | None = Field(default=None, description="Path to qwen CLI; defaults to 'qwen' on PATH")
+
+    # ...rest of your settings...
+
+settings = Settings()  # ensure instantiation still happens
+
+.env.example (add near the bottom)
+# ---------- Qwen Code (headless agent) ----------
+# OpenAI-compatible endpoint (e.g., vLLM, OpenRouter, Alibaba Dashscope compatible)
+QWEN_API_URL=
+# Model name (e.g., qwen/qwen3-coder, qwen3-coder-plus, etc.)
+QWEN_MODEL_NAME=
+# API key for the chosen provider
+QWEN_API_KEY=
+
+# Optional tuning (safe defaults provided)
+QWEN_TIMEOUT_SEC=180
+QWEN_MAX_STDOUT_MB=2000000
+# If qwen isn't on PATH, provide an absolute path
+# QWEN_CLI_PATH=/usr/local/bin/qwen
+
+compute/qwen_code_agent.py (new file)
+from __future__ import annotations
+import json
+import os
+import re
+import shutil
+import tempfile
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import pexpect  # pip install pexpect
+
+from compute.base import BaseCompute
+from settings import settings
+
+SENTINEL = "__QWEN_DONE__"
+JSON_LINE_RE = re.compile(r'^\s*\{.*\}\s*$')
+
+
+@dataclass
+class AgentResult:
+    status: str
+    summary: str
+    result: Dict[str, Any]
+    artifacts: List[Dict[str, Any]]
+    logs: List[str]
+
+
+def _redact(s: str) -> str:
+    # basic redaction to avoid leaking API keys in logs
+    key = os.environ.get("OPENAI_API_KEY") or settings.QWEN_API_KEY or ""
+    return s.replace(key, "****REDACTED****") if key else s
+
+
+def _run_qwen_oneshot(
+    goal: str,
+    files_content: Dict[str, bytes],
+    env_overrides: Optional[Dict[str, str]] = None,
+    timeout_sec: int = 180,
+    max_stdout_bytes: int = 2_000_000,
+    qwen_cmd: str = "qwen",
+) -> AgentResult:
+    """Run qwen CLI in a PTY for a single headless task with a strict contract."""
+    t0 = time.time()
+    workspace = Path(tempfile.mkdtemp(prefix="qwen_", dir=None))
+    outdir = workspace / "out"
+    outdir.mkdir(parents=True, exist_ok=True)
+    os.chmod(workspace, 0o700)
+
+    # stage inputs
+    for rel, blob in files_content.items():
+        dest = workspace / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(blob)
+
+    # breadcrumb (optional, helps the agent)
+    (workspace / "README_TASK.md").write_text(
+        f"# Headless one-shot run\n\nGoal:\n{goal}\n\n"
+        "Write outputs only under ./out.\n"
+        f"Finish by printing one JSON line then {SENTINEL}.\n",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["CI"] = "1"
+    env["NO_COLOR"] = "1"
+    if env_overrides:
+        env.update(env_overrides)
+
+    prompt = (
+        "System:\n"
+        "You are running in a headless, single-shot batch mode. "
+        "Work only inside the current directory.\n\n"
+        "User:\n"
+        "CONSTRAINTS:\n"
+        "- No follow-up questions. Assume sensible defaults.\n"
+        "- Produce work products inside ./out/.\n"
+        "- At completion, print exactly one JSON line (no backticks) describing results:\n"
+        '  {"status":"ok|error","summary":"<one line>","artifacts":["./out/..."],"notes":"<optional>"}\n'
+        f"- Then print exactly: {SENTINEL}\n"
+        f"- Do not print anything after {SENTINEL}.\n\n"
+        f"GOAL:\n{goal}\n"
+    )
+
+    child = None
+    captured: bytearray = bytearray()
+    logs: List[str] = []
+    artifacts_payload: List[Dict[str, Any]] = []
+    parsed_json: Dict[str, Any] | None = None
+
+    try:
+        child = pexpect.spawn(
+            qwen_cmd,
+            cwd=str(workspace),
+            env=env,
+            encoding="utf-8",
+            timeout=timeout_sec,
+        )
+        # Send task then exit command
+        child.sendline(prompt)
+        child.sendline("/exit")
+
+        # Read loop with budget + timeout
+        while True:
+            try:
+                chunk = child.read_nonblocking(size=4096, timeout=5)
+            except pexpect.TIMEOUT:
+                pass
+            except pexpect.EOF:
+                break
+            else:
+                captured.extend(chunk.encode("utf-8", errors="ignore"))
+                if len(captured) >= max_stdout_bytes:
+                    logs.append("max_stdout_bytes reached; truncating output.")
+                    break
+                if SENTINEL in chunk:
+                    break
+
+            if (time.time() - t0) > timeout_sec:
+                logs.append(f"timeout {timeout_sec}s reached; terminating.")
+                try:
+                    child.terminate(force=True)
+                except Exception:
+                    pass
+                break
+
+        # Best-effort close
+        try:
+            child.close(force=True)
+        except Exception:
+            pass
+
+        stdout_text = captured.decode("utf-8", errors="ignore")
+        stdout_text = _redact(stdout_text)
+        logs.append(f"raw_stdout_bytes={len(stdout_text.encode('utf-8'))}")
+
+        # last JSON-looking line
+        last_json_line = None
+        for line in stdout_text.splitlines()[::-1]:
+            if JSON_LINE_RE.match(line.strip()):
+                last_json_line = line.strip()
+                break
+
+        if last_json_line:
+            try:
+                parsed_json = json.loads(last_json_line)
+            except json.JSONDecodeError as e:
+                logs.append(f"failed to parse JSON line: {e}")
+
+        # collect artifacts if declared
+        artifacts_list = []
+        if parsed_json and isinstance(parsed_json.get("artifacts"), list):
+            artifacts_list = parsed_json["artifacts"]
+
+        for relpath in artifacts_list:
+            p = (workspace / relpath).resolve()
+            try:
+                p.relative_to(workspace)  # ensure inside workspace
+            except Exception:
+                logs.append(f"ignored artifact outside workspace: {relpath}")
+                continue
+            if p.is_file():
+                artifacts_payload.append(
+                    {"name": str(Path(relpath)), "bytes": p.read_bytes()}
+                )
+            elif p.is_dir():
+                logs.append(f"directory artifact not packaged: {relpath}")
+
+        status = (parsed_json or {}).get("status") or ("ok" if SENTINEL in stdout_text else "error")
+        summary = (parsed_json or {}).get("summary") or ("completed" if status == "ok" else "incomplete")
+
+        return AgentResult(
+            status=status,
+            summary=summary,
+            result=parsed_json or {},
+            artifacts=artifacts_payload,
+            logs=logs,
+        )
+
+    except Exception as e:
+        return AgentResult(
+            status="error",
+            summary=f"exception: {type(e).__name__}",
+            result={},
+            artifacts=[],
+            logs=logs + [str(e)],
+        )
+    finally:
+        # Always clean up the workspace
+        try:
+            shutil.rmtree(workspace, ignore_errors=True)
+        except Exception:
+            pass
+
+
+class QwenCodeAgentProvider(BaseCompute):
+    """
+    Compute provider that runs qwen-code as a headless, one-shot agent
+    over a staged, permissioned workspace.
+    """
+
+    def __init__(self) -> None:
+        self.base_url = settings.QWEN_API_URL
+        self.model = settings.QWEN_MODEL_NAME
+        self.api_key = settings.QWEN_API_KEY
+        self.timeout_sec = int(settings.QWEN_TIMEOUT_SEC or 180)
+        self.max_stdout_bytes = int(settings.QWEN_MAX_STDOUT_MB or 2_000_000)
+        self.cli_path = settings.QWEN_CLI_PATH or "qwen"
+
+        if not (self.base_url and self.model and self.api_key):
+            raise RuntimeError("Qwen settings incomplete: set QWEN_API_URL, QWEN_MODEL_NAME, QWEN_API_KEY")
+
+    def execute(self, grant_file: Any, files_content: Dict[str, bytes]) -> Dict[str, Any]:
+        """
+        Expects:
+          grant_file.parameters['goal']: str
+        Returns a dict consumable by OperationsService.
+        """
+        goal = (grant_file.parameters or {}).get("goal")
+        if not goal or not isinstance(goal, str):
+            raise ValueError("agentic_task requires parameters.goal (str)")
+
+        env_overrides = {
+            "OPENAI_API_KEY": self.api_key,
+            "OPENAI_BASE_URL": self.base_url,
+            "OPENAI_MODEL": self.model,
+        }
+
+        res = _run_qwen_oneshot(
+            goal=goal,
+            files_content=files_content,
+            env_overrides=env_overrides,
+            timeout_sec=self.timeout_sec,
+            max_stdout_bytes=self.max_stdout_bytes,
+            qwen_cmd=self.cli_path,
+        )
+
+        # Map into a stable API shape for the service/controller
+        return {
+            "status": res.status,
+            "summary": res.summary,
+            "result": res.result,         # parsed JSON (if any)
+            "artifacts": [
+                {
+                    "path": a["name"],
+                    "base64": a["bytes"].decode("latin1")  # or store elsewhere; adjust to your API
+                }
+                for a in res.artifacts
+            ],
+            "logs": res.logs,
+        }
+
+    def get(self, *args, **kwargs):
+        raise NotImplementedError("QwenCodeAgentProvider.get not implemented for MVP")
+
+    def cancel(self, *args, **kwargs):
+        raise NotImplementedError("QwenCodeAgentProvider.cancel not implemented for MVP")
+
+services/operations.py (minimal hook)
+# ...existing imports...
+from compute.qwen_code_agent import QwenCodeAgentProvider
+
+# inside OperationsService.create (or equivalent) add near the top after inputs are prepared:
+# Assume variables:
+#   - grant_file: incoming grant spec
+#   - decrypted_files_dict: Dict[str, bytes] with staged contents
+# Keep existing llm_inference as fallback.
+
+if grant_file.operation == "agentic_task":
+    provider = QwenCodeAgentProvider()
+    result = provider.execute(grant_file=grant_file, files_content=decrypted_files_dict)
+    # Return shape consistent with your API (reuse what's done for llm_inference responses)
+    return {
+        "operation": "agentic_task",
+        "status": result.get("status"),
+        "summary": result.get("summary"),
+        "result": result.get("result"),
+        "artifacts": result.get("artifacts"),
+        "logs": result.get("logs"),
+    }
+
+# ...existing logic for other operations (e.g., llm_inference) remains unchanged...
+
+
+notes
+
+add pexpect to your dependencies (e.g., requirements.txt).
+
+the provider enforces a strict, tool-agnostic protocol: one JSON line + __QWEN_DONE__, artifacts under ./out/.
+
+artifacts encoding: I used a safe placeholder (latin1) for raw bytes in-band; if your API expects base64, swap that line to base64.b64encode(a["bytes"]).decode() and import base64.
+
+if qwen isn’t on PATH, set QWEN_CLI_PATH in your env.
+
+want me to also add a tiny local smoke-test script you can run (python -m scripts/try_qwen_headless) that feeds a demo goal and prints the parsed output?
+
+You said:
+yes
+ChatGPT said:
+
+perfect — here’s a bare-bones local smoke test script you can drop in scripts/try_qwen_headless.py and run with python -m scripts.try_qwen_headless. it wires up the provider we just built, gives it a trivial goal, and prints the parsed result.
+
+scripts/try_qwen_headless.py
+"""
+Quick local smoke test for QwenCodeAgentProvider.
+Usage:
+  python -m scripts.try_qwen_headless
+"""
+
+import base64
+import sys
+
+from compute.qwen_code_agent import QwenCodeAgentProvider
+
+def main():
+    goal = "List all Python files in this workspace and summarize their purpose."
+    # trivial staged input: just a README so qwen has something
+    files_content = {
+        "README.txt": b"This is a dummy input file for the smoke test.\n"
+    }
+
+    provider = QwenCodeAgentProvider()
+    res = provider.execute(
+        grant_file=type("DummyGrant", (), {"parameters": {"goal": goal}}),
+        files_content=files_content,
+    )
+
+    print("=== status ===")
+    print(res["status"])
+    print("=== summary ===")
+    print(res["summary"])
+    print("=== result JSON ===")
+    print(res["result"])
+    print("=== logs ===")
+    for l in res["logs"]:
+        print(" -", l)
+    print("=== artifacts ===")
+    for art in res["artifacts"]:
+        path = art["path"]
+        raw = art["base64"]
+        # if you switched to base64 in provider, decode to show size
+        try:
+            b = base64.b64decode(raw)
+            print(f"artifact {path}: {len(b)} bytes")
+        except Exception:
+            # latin1 pass-through mode
+            print(f"artifact {path}: {len(raw)} bytes (raw pass-through)")
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+how to use
+
+ensure pexpect is installed:
+
+pip install pexpect
+
+
+install qwen CLI globally or set QWEN_CLI_PATH in .env.
+
+set up the .env with your QWEN_API_URL, QWEN_MODEL_NAME, QWEN_API_KEY.
+
+run:
+
+python -m scripts.try_qwen_headless
+
+expected
+
+provider creates a temp workspace with the dummy file.
+
+qwen runs headless, interprets the goal, and (ideally) prints JSON + sentinel.
+
+the script prints status, summary, logs, and any artifacts.
+
+want me to also add a tiny shell equivalent (just echo piping into qwen) so you can compare how the CLI behaves without our harness?

@@ -50,3 +50,9 @@ class ErrorResponse(BaseModel):
     detail: str
     error_code: str
     field: str | None = None
+
+class ArtifactDownloadRequest(BaseModel):
+    """Request model for authenticated artifact downloads."""
+    operation_id: str
+    artifact_path: str
+    signature: str  # Ethereum signature of the request
