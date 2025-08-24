@@ -177,9 +177,6 @@ class DockerAgentRunner:
             "cpu_quota": int(float(self.cpu_limit) * 100_000),  # CPU limit (100k = 1 CPU)
             "cpu_period": 100_000,   # CPU period (100ms)
             "detach": True,
-            "remove": True,          # Auto-cleanup
-            "stderr": True,
-            "stdout": True,
         }
         
         logger.info(f"[DOCKER-{agent_type}] Starting container for {operation_id}")
@@ -222,18 +219,23 @@ class DockerAgentRunner:
         
         def run_container():
             """Synchronous container execution."""
+            container = None
             try:
-                container = self.docker_client.containers.run(**container_config)
+                # Create and start container separately for better control
+                container = self.docker_client.containers.create(**container_config)
+                container.start()
                 
                 # Wait for completion with timeout
                 start_time = time.time()
-                while container.status not in ['exited', 'dead']:
+                while True:
+                    container.reload()
+                    if container.status in ['exited', 'dead']:
+                        break
                     if time.time() - start_time > self.timeout_sec:
                         logger.warning(f"[DOCKER-{agent_type}] Container timeout, killing")
                         container.kill()
                         break
                     time.sleep(1)
-                    container.reload()
                 
                 # Collect output
                 logs = container.logs(stdout=True, stderr=True).decode('utf-8', errors='ignore')
@@ -243,6 +245,13 @@ class DockerAgentRunner:
                 if len(logs) > self.max_output_bytes:
                     logs = logs[:self.max_output_bytes] + "\n... [output truncated]"
                 
+                # Clean up container
+                try:
+                    container.remove()
+                    logger.debug(f"[DOCKER-{agent_type}] Container cleaned up")
+                except:
+                    pass  # Ignore cleanup errors
+                
                 return {
                     "stdout": logs,
                     "exit_code": exit_code,
@@ -251,6 +260,12 @@ class DockerAgentRunner:
                 
             except ContainerError as e:
                 logger.error(f"[DOCKER-{agent_type}] Container error: {e}")
+                # Clean up container if it was created
+                if container:
+                    try:
+                        container.remove(force=True)
+                    except:
+                        pass
                 return {
                     "stdout": e.stderr.decode('utf-8', errors='ignore') if e.stderr else "",
                     "exit_code": e.exit_status,
@@ -258,6 +273,12 @@ class DockerAgentRunner:
                 }
             except Exception as e:
                 logger.error(f"[DOCKER-{agent_type}] Unexpected error: {e}")
+                # Clean up container if it was created
+                if container:
+                    try:
+                        container.remove(force=True)
+                    except:
+                        pass
                 return {
                     "stdout": "",
                     "exit_code": -1,
