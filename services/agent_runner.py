@@ -107,7 +107,9 @@ class DockerAgentRunner:
         
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace_path = Path(temp_dir) / "workspace"
-            workspace_path.mkdir()
+            workspace_path.mkdir(mode=0o755)
+            # Make workspace world-readable to avoid UID/GID issues between containers
+            workspace_path.chmod(0o755)
             
             # Create a writable home directory for CLI config files
             # Don't use bind mount for home - it has UID/GID issues
@@ -117,12 +119,14 @@ class DockerAgentRunner:
                 # Stage workspace files
                 self._stage_workspace_files(workspace_path, workspace_files)
                 
-                # If stdin_input provided, write it to a file for piping
+                # If stdin_input provided, make it world-readable to avoid UID issues
                 stdin_file = None
                 if stdin_input:
                     stdin_file = workspace_path / ".stdin_input"
                     stdin_file.write_text(stdin_input, encoding='utf-8')
-                    logger.info(f"[DOCKER] Wrote stdin input to {stdin_file} (exists: {stdin_file.exists()}, size: {stdin_file.stat().st_size} bytes)")
+                    # Make it world-readable so container user can access it regardless of UID
+                    stdin_file.chmod(0o644)
+                    logger.info(f"[DOCKER] Wrote stdin input to {stdin_file} (exists: {stdin_file.exists()}, size: {stdin_file.stat().st_size} bytes, mode: {oct(stdin_file.stat().st_mode)})")
                     # Also log first 100 chars of content for debugging
                     logger.debug(f"[DOCKER] Stdin content preview: {stdin_input[:100]}...")
                 
@@ -159,7 +163,9 @@ class DockerAgentRunner:
             try:
                 file_path.relative_to(workspace_path)
                 file_path.write_bytes(content)
-                logger.debug(f"Staged file: {filename} ({len(content)} bytes)")
+                # Make files world-readable to avoid UID/GID issues
+                file_path.chmod(0o644)
+                logger.debug(f"Staged file: {filename} ({len(content)} bytes, mode: {oct(file_path.stat().st_mode)})")
             except ValueError as e:
                 logger.warning(f"Skipping unsafe file path: {filename}: {e}")
     
@@ -193,8 +199,7 @@ class DockerAgentRunner:
         if stdin_file:
             # Use cat to pipe the file content to the command's stdin
             # The file is in the current working directory, use relative path
-            # Let's first check what files exist
-            full_command = ["sh", "-c", f"pwd && ls -la && cat .stdin_input | {command} {escaped_args}"]
+            full_command = ["sh", "-c", f"cat .stdin_input | {command} {escaped_args}"]
         else:
             full_command = ["sh", "-c", f"{command} {escaped_args}"]
         
