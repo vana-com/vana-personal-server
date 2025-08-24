@@ -282,17 +282,36 @@ class DockerAgentRunner:
         # Parse JSON result from output
         parsed_json = self._parse_agent_result(stdout)
         
-        # Determine final status
+        # Determine final status with comprehensive fallbacks
         has_sentinel = SENTINEL in stdout
+        
+        # Check for common error patterns in output
+        error_patterns = [
+            "error:", "exception:", "traceback:", "failed:", 
+            "permission denied", "not found", "syntax error"
+        ]
+        has_error_pattern = any(
+            pattern in stdout.lower() 
+            for pattern in error_patterns
+        )
+        
         if runtime_error:
             status = "error"
-            summary = "Container execution failed"
+            summary = f"Container execution failed: {runtime_error[:100]}"
         elif parsed_json:
             status = parsed_json.get("status", "ok" if has_sentinel else "error")
             summary = parsed_json.get("summary", "Agent completed")
+        elif has_sentinel and not has_error_pattern:
+            # Agent printed sentinel but no JSON - partial success
+            status = "warning"
+            summary = "Agent completed but produced no structured output"
+        elif has_error_pattern:
+            # Detected error patterns in output
+            status = "error"
+            summary = "Agent encountered errors during execution"
         else:
-            status = "ok" if has_sentinel else "error"
-            summary = "Agent completed" if has_sentinel else "Agent failed (no result)"
+            status = "error"
+            summary = "Agent failed to complete (no result or sentinel)"
         
         return {
             "status": status,
@@ -320,15 +339,59 @@ class DockerAgentRunner:
         return secure_env
     
     def _parse_agent_result(self, output: str) -> Optional[Dict]:
-        """Parse JSON result from agent output."""
+        """
+        Parse JSON result from agent output with comprehensive error handling.
+        
+        Handles edge cases:
+        - Multiple JSON objects in output
+        - Partial/malformed JSON
+        - JSON embedded in other text
+        - No JSON present
+        """
         # Look for JSON line in output (agents output result as single JSON line)
+        json_candidates = []
+        
         for line in reversed(output.splitlines()):
             line = line.strip()
-            if line.startswith('{') and line.endswith('}'):
+            
+            # Skip empty lines and obvious non-JSON
+            if not line or not ('{' in line and '}' in line):
+                continue
+            
+            # Try to extract JSON from the line
+            # Handle cases where JSON is embedded in text
+            start_idx = line.find('{')
+            end_idx = line.rfind('}') + 1
+            
+            if start_idx >= 0 and end_idx > start_idx:
+                potential_json = line[start_idx:end_idx]
+                
                 try:
-                    return json.loads(line)
+                    parsed = json.loads(potential_json)
+                    # Validate it looks like agent output
+                    if isinstance(parsed, dict) and any(
+                        key in parsed for key in ['status', 'summary', 'result', 'artifacts']
+                    ):
+                        json_candidates.append(parsed)
                 except json.JSONDecodeError:
-                    continue
+                    # Try to fix common issues
+                    try:
+                        # Handle single quotes (common in Python output)
+                        fixed = potential_json.replace("'", '"')
+                        parsed = json.loads(fixed)
+                        if isinstance(parsed, dict):
+                            json_candidates.append(parsed)
+                    except:
+                        continue
+        
+        # Return the most complete candidate (with most expected fields)
+        if json_candidates:
+            def score_candidate(obj):
+                expected_fields = ['status', 'summary', 'artifacts', 'result']
+                return sum(1 for field in expected_fields if field in obj)
+            
+            return max(json_candidates, key=score_candidate)
+        
         return None
     
     def _collect_artifacts(self, workspace_path: Path, operation_id: str) -> List[Dict]:

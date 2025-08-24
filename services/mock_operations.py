@@ -12,6 +12,7 @@ from typing import Optional
 
 from domain.entities import GrantFile
 from services.operations import ExecuteResponse, GetResponse
+from services.compute_registry import get_compute_registry
 from settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -111,19 +112,17 @@ class MockOperationsService:
             )
             logger.info("[MOCK] Created default LLM inference grant file")
         
-        # Route to appropriate provider
+        # Route to appropriate provider using registry
         try:
-            if mock_grant_file.operation == "prompt_qwen_agent":
-                logger.info(f"[MOCK] Routing to Qwen agent provider [RequestID: {request_id}]")
-                agent_provider = self._get_qwen_agent()
-                result = agent_provider.execute(mock_grant_file, mock_files_content)
-            elif mock_grant_file.operation == "prompt_gemini_agent":
-                logger.info(f"[MOCK] Routing to Gemini agent provider [RequestID: {request_id}]")
-                agent_provider = self._get_gemini_agent()
-                result = agent_provider.execute(mock_grant_file, mock_files_content)
+            registry = get_compute_registry()
+            provider = registry.get_provider(mock_grant_file.operation)
+            
+            if provider:
+                logger.info(f"[MOCK] Using registered provider for '{mock_grant_file.operation}' [RequestID: {request_id}]")
+                result = provider.execute(mock_grant_file, mock_files_content)
             else:
-                # Mock standard compute response
-                logger.info(f"[MOCK] Using mock compute response [RequestID: {request_id}]")
+                # Mock standard compute response for unregistered operations
+                logger.info(f"[MOCK] No registered provider, using mock response [RequestID: {request_id}]")
                 result = ExecuteResponse(
                     id=f"mock_{int(time.time() * 1000)}",
                     created_at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())

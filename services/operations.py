@@ -3,6 +3,7 @@ import logging
 
 from web3 import AsyncWeb3
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
+from services.compute_registry import get_compute_registry
 from domain.entities import FileMetadata, GrantFile
 from domain.value_objects import PersonalServerRequest
 from eth_account.messages import encode_defunct
@@ -169,25 +170,16 @@ class OperationsService:
         files_content = self._decrypt_files_content(files_metadata, server_private_key, request_id)
 
         try:
-            # Route to appropriate compute provider based on operation type
-            if grant_file.operation == "prompt_qwen_agent":
-                logger.info(f"[SERVICE] Routing to Qwen agent provider [RequestID: {request_id}]")
-                from compute.qwen_agent import QwenCodeAgentProvider
-                agent_provider = QwenCodeAgentProvider()
-                result = agent_provider.execute(grant_file, files_content)
-            elif grant_file.operation == "prompt_gemini_agent":
-                logger.info(f"[SERVICE] Routing to Gemini agent provider [RequestID: {request_id}]")
-                from compute.gemini_agent import GeminiAgentProvider
-                agent_provider = GeminiAgentProvider()
-                result = agent_provider.execute(grant_file, files_content)
-            elif grant_file.operation == "agentic_task":
-                # Keep backward compatibility for existing agentic_task operations
-                logger.info(f"[SERVICE] Routing to Qwen agent (legacy agentic_task) [RequestID: {request_id}]")
-                from compute.qwen_agent import QwenCodeAgentProvider
-                agent_provider = QwenCodeAgentProvider()
-                result = agent_provider.execute(grant_file, files_content)
+            # Use registry to get appropriate compute provider
+            registry = get_compute_registry()
+            provider = registry.get_provider(grant_file.operation)
+            
+            if provider:
+                logger.info(f"[SERVICE] Using registered provider for '{grant_file.operation}' [RequestID: {request_id}]")
+                result = provider.execute(grant_file, files_content)
             else:
-                logger.info(f"[SERVICE] Executing standard compute operation with {len(files_content)} decrypted files [RequestID: {request_id}]")
+                # Fallback to default compute provider for unregistered operations
+                logger.info(f"[SERVICE] No registered provider for '{grant_file.operation}', using default [RequestID: {request_id}]")
                 result = self.compute.execute(grant_file, files_content)
             
             logger.info(f"[SERVICE] Compute operation completed successfully, operation ID: {result.id} [RequestID: {request_id}]")

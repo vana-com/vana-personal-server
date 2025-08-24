@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir poetry
 
 # Copy package files for reproducible builds
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 RUN npm ci --only=production
 
 COPY pyproject.toml poetry.lock* ./
