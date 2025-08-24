@@ -33,6 +33,11 @@ class TaskInfo:
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     task: Optional[asyncio.Task] = None
+    # Streaming log support
+    logs: list = field(default_factory=list)
+    log_size: int = 0
+    max_log_size: int = 10_000_000  # 10MB limit
+    truncated: bool = False
 
 
 class TaskStore:
@@ -111,6 +116,31 @@ class TaskStore:
         """Get task result if available."""
         task_info = await self.get_task(operation_id)
         return task_info.result if task_info else None
+    
+    async def append_logs(self, operation_id: str, lines: list) -> bool:
+        """Append log lines to task, with size limit enforcement."""
+        async with self._lock:
+            if operation_id not in self._tasks:
+                logger.warning(f"Task {operation_id} not found for log append")
+                return False
+            
+            task_info = self._tasks[operation_id]
+            
+            for line in lines:
+                line_size = len(line)
+                
+                # Check if adding this line would exceed the limit
+                if task_info.log_size + line_size > task_info.max_log_size:
+                    if not task_info.truncated:
+                        task_info.truncated = True
+                        task_info.logs.append("[... logs truncated at 10MB limit ...]")
+                        logger.warning(f"Task {operation_id} logs truncated at {task_info.log_size} bytes")
+                    break
+                
+                task_info.logs.append(line)
+                task_info.log_size += line_size
+            
+            return True
     
     async def cancel_task(self, operation_id: str) -> bool:
         """Cancel a running task."""

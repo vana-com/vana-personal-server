@@ -157,7 +157,7 @@ class BaseAgentProvider(BaseCompute, ABC):
         return ExecuteResponse(id=operation_id, created_at=created_at)
     
     async def get(self, prediction_id: str) -> GetResponse:
-        """Get task status and results."""
+        """Get task status and results with accumulated logs."""
         task_info = await self._task_store.get_task(prediction_id)
         
         if not task_info:
@@ -166,16 +166,24 @@ class BaseAgentProvider(BaseCompute, ABC):
         # Map internal status to API status
         api_status = self._map_status(task_info.status)
         
-        # Format result
+        # Format result with logs included
         if task_info.result:
-            result_str = json.dumps(task_info.result, indent=2)
+            # Include logs in existing result
+            result_with_logs = dict(task_info.result)
+            result_with_logs["logs"] = task_info.logs[-100:]  # Last 100 lines
+            result_with_logs["log_count"] = len(task_info.logs)
+            result_with_logs["truncated"] = task_info.truncated
+            result_str = json.dumps(result_with_logs, indent=2)
         else:
+            # Include logs even when no result yet
             result_str = json.dumps({
                 "status": task_info.status.value,
                 "summary": f"Task is {task_info.status.value}",
                 "result": {},
                 "artifacts": [],
-                "logs": []
+                "logs": task_info.logs[-100:],  # Last 100 lines
+                "log_count": len(task_info.logs),
+                "truncated": task_info.truncated
             }, indent=2)
         
         return GetResponse(
