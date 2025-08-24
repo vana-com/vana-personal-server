@@ -161,7 +161,12 @@ class DockerAgentRunner:
         - read_only=True: Immutable container filesystem
         - Working directory mounted as writable for artifacts
         """
-        full_command = [command] + args
+        # Ensure command is executed through shell to find npm-installed binaries
+        # The command should be in PATH from Dockerfile ENV PATH="/workspace/node_modules/.bin:${PATH}"
+        # Use shlex to properly escape arguments for shell
+        import shlex
+        escaped_args = ' '.join(shlex.quote(arg) for arg in args)
+        full_command = ["sh", "-c", f"{command} {escaped_args}"]
         
         # Prepare secure container configuration
         container_config = {
