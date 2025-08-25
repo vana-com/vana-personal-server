@@ -243,7 +243,6 @@ class DockerAgentRunner:
             "cpu_quota": int(float(self.cpu_limit) * 100_000),  # CPU limit (100k = 1 CPU)
             "cpu_period": 100_000,   # CPU period (100ms)
             "detach": True,
-            "tty": True,  # Allocate TTY for line-buffered output
             # Security hardening as suggested
             "cap_drop": ["ALL"],  # Drop all capabilities
             "security_opt": ["no-new-privileges:true"],  # Prevent privilege escalation
@@ -714,112 +713,61 @@ class DockerAgentRunner:
         task_store
     ) -> Dict[str, Any]:
         """
-        Stream logs from container to task store in real-time.
+        Collect logs from container periodically and update task store.
         
         Returns dict with stdout collected.
         """
         loop = asyncio.get_event_loop()
-        stdout_lines = []
-        log_batch = []
-        total_size = 0
-        sentinel_found = False
-        
-        def get_log_stream():
-            """Get log stream from container."""
-            try:
-                return container.logs(stream=True, follow=True)
-            except Exception as e:
-                logger.error(f"[DOCKER-{agent_type}] Failed to get log stream: {e}")
-                return None
-        
-        # Get log stream in thread pool
-        log_stream = await loop.run_in_executor(None, get_log_stream)
-        
-        if not log_stream:
-            return {"stdout": "", "error": "Failed to get log stream"}
         
         try:
-            # Process log stream
+            # Periodically collect logs while container is running
+            all_logs = ""
+            last_log_size = 0
+            
             while True:
-                # Read next log line in thread pool (blocking operation)
-                def read_next_line():
+                # Check container status
+                def check_container():
                     try:
-                        # The stream is an iterator that yields bytes
-                        return next(log_stream, None)
-                    except StopIteration:
-                        return None
+                        container.reload()
+                        return container.status, container.logs(stdout=True, stderr=True).decode('utf-8', errors='ignore')
                     except Exception as e:
-                        logger.warning(f"[DOCKER-{agent_type}] Error reading log line: {e}")
-                        return None
+                        logger.warning(f"[DOCKER-{agent_type}] Error checking container: {e}")
+                        return 'error', all_logs
                 
-                line_bytes = await loop.run_in_executor(None, read_next_line)
+                status, current_logs = await loop.run_in_executor(None, check_container)
                 
-                if line_bytes is None:
-                    # Stream ended
-                    break
-                
-                # Decode line
-                line = line_bytes.decode('utf-8', errors='ignore').rstrip()
-                
-                # Check for size limit
-                if total_size + len(line) > self.max_output_bytes:
-                    line = "... [output truncated]"
-                    stdout_lines.append(line)
-                    log_batch.append(line)
-                    logger.info(f"[DOCKER-{agent_type}-STREAM] {line}")
-                    await task_store.append_logs(operation_id, log_batch)
-                    break
-                
-                stdout_lines.append(line)
-                log_batch.append(line)
-                total_size += len(line)
-                
-                # Also log to console for real-time viewing
-                logger.info(f"[DOCKER-{agent_type}-STREAM] {line}")
-                
-                # Check for sentinel
-                if SENTINEL in line:
-                    sentinel_found = True
-                
-                # Batch update to task store (every 10 lines or on sentinel)
-                if len(log_batch) >= 10 or sentinel_found:
-                    await task_store.append_logs(operation_id, log_batch)
-                    log_batch = []
-                
-                # If sentinel found, we can stop following logs
-                if sentinel_found:
-                    # Read any remaining output quickly
-                    remaining_count = 0
-                    while remaining_count < 20:  # Read up to 20 more lines after sentinel
-                        line_bytes = await loop.run_in_executor(None, read_next_line)
-                        if line_bytes is None:
-                            break
-                        line = line_bytes.decode('utf-8', errors='ignore').rstrip()
-                        stdout_lines.append(line)
-                        log_batch.append(line)
-                        logger.info(f"[DOCKER-{agent_type}-STREAM] {line}")
-                        remaining_count += 1
+                # If we have new logs, process them
+                if len(current_logs) > last_log_size:
+                    new_content = current_logs[last_log_size:]
                     
-                    # Final batch update
-                    if log_batch:
-                        await task_store.append_logs(operation_id, log_batch)
+                    # Log new lines to console
+                    for line in new_content.splitlines():
+                        if line.strip():
+                            logger.info(f"[DOCKER-{agent_type}-STREAM] {line}")
+                    
+                    # Update task store with new content
+                    if new_content.strip():
+                        await task_store.append_logs(operation_id, new_content.splitlines())
+                    
+                    all_logs = current_logs
+                    last_log_size = len(current_logs)
+                
+                # If container has exited, we're done
+                if status in ['exited', 'dead']:
                     break
+                
+                # Check for sentinel to stop early
+                if SENTINEL in all_logs:
+                    break
+                
+                # Wait before next check
+                await asyncio.sleep(1)
             
-            # Send any remaining logs
-            if log_batch:
-                await task_store.append_logs(operation_id, log_batch)
-            
-            return {"stdout": "\n".join(stdout_lines)}
+            return {"stdout": all_logs}
             
         except Exception as e:
-            logger.error(f"[DOCKER-{agent_type}] Error streaming logs: {e}")
-            # Send any collected logs
-            if log_batch:
-                try:
-                    await task_store.append_logs(operation_id, log_batch)
-                except:
-                    pass
-            return {"stdout": "\n".join(stdout_lines), "error": str(e)}
+            logger.error(f"[DOCKER-{agent_type}] Error collecting logs: {e}")
+            return {"stdout": "", "error": str(e)}
     
     async def _monitor_container_status(
         self,
