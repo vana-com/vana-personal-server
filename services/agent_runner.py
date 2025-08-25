@@ -105,49 +105,47 @@ class DockerAgentRunner:
         
         logger.info(f"[DOCKER-{agent_type}] execute_agent called with stdin_input={bool(stdin_input)} (length={len(stdin_input) if stdin_input else 0})")
         
-        # Use host path from environment for workspace sharing between sibling containers
-        host_root = Path(os.environ["HOST_PROJECT_DIR"])
-        host_shared = host_root / ".agent_workspaces"
-        host_shared.mkdir(exist_ok=True)
+        # 1. Define the base path for workspaces inside the container's shared volume.
+        #    This path (/app/.agent_workspaces) exists both in the container AND on the host.
+        workspace_base_dir = Path("/app/.agent_workspaces")
+        workspace_base_dir.mkdir(exist_ok=True)
         
-        workspace = Path(tempfile.mkdtemp(prefix=f"{operation_id}_", dir=str(host_shared)))
-        temp_dir = str(workspace)  # For compatibility with existing code
+        # Guard: ensure directory is writable
+        if not os.access(workspace_base_dir, os.W_OK):
+            raise RuntimeError(f"{workspace_base_dir} not writable; run: mkdir -p .agent_workspaces && chmod 755 .agent_workspaces (or export UID=$(id -u) GID=$(id -g) before docker compose up)")
+
+        # 2. Create a unique, temporary directory for this specific operation.
+        #    This directory is created inside the shared volume.
+        operation_workspace_path = Path(tempfile.mkdtemp(prefix=f"{operation_id}_", dir=workspace_base_dir))
+        # Fix permissions immediately - tempfile.mkdtemp creates 0o700 (owner-only)
+        # Agent container runs as different UID, needs traverse AND write access
+        operation_workspace_path.chmod(0o777)  # Allow read/write/execute for all users
         
         try:
-            # Use the workspace directory directly (already created by tempfile.mkdtemp)
-            workspace_path = workspace
-            workspace_path.chmod(0o755)
+            # 3. Translate the container path to the absolute path on the HOST.
+            #    The Docker daemon needs this path for the volume mount.
+            # Since we're in the container at /app, and /app is mounted from host's project root,
+            # we need to replace /app with the actual host project directory
+            host_project_dir = os.environ.get("HOST_PROJECT_DIR", os.getcwd())
+            host_workspace_path = str(operation_workspace_path).replace('/app', host_project_dir)
+
+            self._stage_workspace_files(operation_workspace_path, workspace_files)
             
-            # Create a writable home directory for CLI config files
-            # Don't use bind mount for home - it has UID/GID issues
-            # Instead, we'll use tmpfs or let the container create it
-            
-            # Stage workspace files
-            self._stage_workspace_files(workspace_path, workspace_files)
-            
-            # If stdin_input provided, make it world-readable to avoid UID issues
-            stdin_file = None
             if stdin_input:
-                stdin_file = workspace_path / ".stdin_input"
+                stdin_file = operation_workspace_path / ".stdin_input"
                 stdin_file.write_text(stdin_input, encoding='utf-8')
-                # Make it world-readable so container user can access it regardless of UID
+                # Make file readable by all users (agent container may have different UID)
                 stdin_file.chmod(0o644)
-                logger.info(f"[DOCKER] Wrote stdin input to {stdin_file} (exists: {stdin_file.exists()}, size: {stdin_file.stat().st_size} bytes, mode: {oct(stdin_file.stat().st_mode)})")
-                # Also log first 100 chars of content for debugging
-                logger.debug(f"[DOCKER] Stdin content preview: {stdin_input[:100]}...")
-                
-                # List what's actually in the workspace directory on the host
-                files_in_workspace = list(os.listdir(workspace_path))
-                logger.info(f"[DOCKER] Files in workspace on host: {files_in_workspace}")
+                logger.info(f"[DOCKER] Wrote stdin input to {stdin_file}")
             
-            # Execute in container with optional streaming
+            # 5. Execute the container, providing the HOST path for the volume.
             result = await self._run_container(
-                agent_type, command, args, workspace_path, env_vars, 
-                operation_id, task_store, stdin_file
+                agent_type, command, args, str(host_workspace_path), env_vars, 
+                operation_id, task_store
             )
             
-            # Process artifacts from workspace
-            artifacts = self._collect_artifacts(workspace_path, operation_id)
+            # Collect artifacts and add to the result
+            artifacts = self._collect_artifacts(operation_workspace_path, operation_id)
             result["artifacts"] = artifacts
             result["execution_time"] = time.time() - start_time
             
@@ -165,12 +163,11 @@ class DockerAgentRunner:
                 "execution_time": time.time() - start_time
             }
         finally:
-            # Clean up workspace directory
+            # 6. Clean up the workspace using the container's path.
             try:
                 import shutil
-                if workspace.exists():
-                    shutil.rmtree(workspace)
-                    logger.debug(f"[DOCKER] Cleaned up workspace: {workspace}")
+                shutil.rmtree(operation_workspace_path, ignore_errors=True)
+                logger.debug(f"[DOCKER] Cleaned up workspace: {operation_workspace_path}")
             except Exception as e:
                 logger.warning(f"[DOCKER] Failed to cleanup workspace: {e}")
     
@@ -193,11 +190,10 @@ class DockerAgentRunner:
         agent_type: str,
         command: str,
         args: List[str],
-        workspace_path: Path,
+        host_workspace_path: str,
         env_vars: Dict[str, str],
         operation_id: str,
-        task_store=None,
-        stdin_file: Optional[Path] = None
+        task_store=None
     ) -> Dict[str, Any]:
         """
         Run agent command in secure Docker container.
@@ -214,13 +210,8 @@ class DockerAgentRunner:
         import shlex
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
         
-        # If stdin_file provided, pipe it to the command
-        if stdin_file:
-            # Debug: Check what's actually in the mounted directory
-            # Use cat to pipe the file content to the command's stdin
-            full_command = ["sh", "-c", f"ls -la /workspace/agent-work/ && cat .stdin_input | {command} {escaped_args}"]
-        else:
-            full_command = ["sh", "-c", f"{command} {escaped_args}"]
+        # Check if stdin input file exists and pipe it to the command
+        full_command = ["sh", "-c", f"if [ -f .stdin_input ]; then cat .stdin_input | {command} {escaped_args}; else {command} {escaped_args}; fi"]
         
         # Determine network mode based on agent requirements
         # Allow network for agents that need API access, otherwise isolate
@@ -234,7 +225,7 @@ class DockerAgentRunner:
             "environment": self._prepare_environment(env_vars),
             # Use volumes dict for Docker API (expects host paths)
             "volumes": {
-                str(workspace_path): {"bind": "/workspace/agent-work", "mode": "rw,z"}  # 'z' helps on SELinux hosts
+                host_workspace_path: {"bind": "/workspace/agent-work", "mode": "rw,z"}  # 'z' helps on SELinux hosts
             },
             # Use tmpfs for writable directories instead of bind mounts (avoids UID/GID issues)
             "tmpfs": {
@@ -256,8 +247,7 @@ class DockerAgentRunner:
         logger.info(f"[DOCKER-{agent_type}] Starting container for {operation_id}")
         logger.debug(f"[DOCKER-{agent_type}] Command: {' '.join(full_command)}")
         logger.debug(f"[DOCKER-{agent_type}] Network mode: {network_mode}")
-        logger.debug(f"[DOCKER-{agent_type}] Has stdin: {stdin_file is not None}")
-        logger.info(f"[DOCKER-{agent_type}] Mounting {workspace_path} -> /workspace/agent-work")
+        logger.info(f"[DOCKER-{agent_type}] Mounting {host_workspace_path} -> /workspace/agent-work")
         
         try:
             # Run container asynchronously with streaming if task_store provided
