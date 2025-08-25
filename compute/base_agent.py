@@ -175,10 +175,10 @@ class BaseAgentProvider(BaseCompute, ABC):
             result_with_logs["logs"] = task_info.logs[-100:]  # Last 100 lines
             result_with_logs["log_count"] = len(task_info.logs)
             result_with_logs["truncated"] = task_info.truncated
-            result_str = json.dumps(result_with_logs, indent=2)
+            result_dict = result_with_logs
         else:
             # Include logs even when no result yet
-            result_str = json.dumps({
+            result_dict = {
                 "status": task_info.status.value,
                 "summary": f"Task is {task_info.status.value}",
                 "result": {},
@@ -186,14 +186,14 @@ class BaseAgentProvider(BaseCompute, ABC):
                 "logs": task_info.logs[-100:],  # Last 100 lines
                 "log_count": len(task_info.logs),
                 "truncated": task_info.truncated
-            }, indent=2)
+            }
         
         return GetResponse(
             id=prediction_id,
             status=api_status,
             started_at=task_info.started_at.isoformat() + "Z" if task_info.started_at else None,
             finished_at=task_info.completed_at.isoformat() + "Z" if task_info.completed_at else None,
-            result=result_str
+            result=result_dict
         )
     
     async def cancel(self, prediction_id: str) -> bool:

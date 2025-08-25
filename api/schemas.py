@@ -43,7 +43,7 @@ class GetOperationResponse(BaseModel):
     status: str
     started_at: str | None = None
     finished_at: str | None = None
-    result: str | None = None
+    result: dict | None = None  # Changed from str to dict for proper JSON structure
 
 class ErrorResponse(BaseModel):
     kind: str = Field(default="Error", description="Resource type identifier")
