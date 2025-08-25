@@ -8,6 +8,7 @@ import os
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from coincurve import PrivateKey, PublicKey
+from .decrypt import decrypt_with_private_key
 
 
 def encrypt_with_public_key(data: bytes, public_key: str) -> str:
