@@ -762,8 +762,8 @@ class DockerAgentRunner:
                 if SENTINEL in all_logs:
                     break
                 
-                # Wait before next check
-                await asyncio.sleep(1)
+                # Wait before next check (shorter interval for better streaming)
+                await asyncio.sleep(0.5)
             
             return {"stdout": all_logs}
             
