@@ -52,6 +52,10 @@ services:
       - ./:/app
       # Mount docker socket for sibling container pattern (agents run in separate containers)
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Optional: Mount loop device for hard workspace size limit
+      # First run: sudo ./setup-loop-device.sh
+      # Then uncomment the line below:
+      # - /mnt/agent-workspace:/app/.agent_workspaces
     # Grant access to Docker socket by adding container user to docker group
     # Find your Docker GID with: getent group docker | cut -d: -f3
     group_add:

@@ -149,8 +149,9 @@ class DockerAgentRunner:
                 operation_id, task_store
             )
             
-            # Artifacts are now collected inside _run_container from tmpfs
-            # No need to collect them from host filesystem
+            # Collect artifacts from workspace (bind mount means they're on host filesystem)
+            artifacts = self._collect_artifacts(operation_workspace_path, operation_id)
+            result["artifacts"] = artifacts
             result["execution_time"] = time.time() - start_time
             
             return result
@@ -214,11 +215,8 @@ class DockerAgentRunner:
         import shlex
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
         
-        # First copy input files to working directory, then run command
-        # This allows agents to find input files in their working directory while keeping inputs read-only
-        # Use . to copy all files including hidden ones (like .stdin_input)
-        copy_cmd = "cp -r /workspace/input/. /workspace/agent-work/ 2>/dev/null || true"
-        full_command = ["sh", "-c", f"{copy_cmd} && cd /workspace/agent-work && if [ -f .stdin_input ]; then cat .stdin_input | {command} {escaped_args}; else {command} {escaped_args}; fi"]
+        # Check if stdin input file exists and pipe it to the command
+        full_command = ["sh", "-c", f"if [ -f .stdin_input ]; then cat .stdin_input | {command} {escaped_args}; else {command} {escaped_args}; fi"]
         
         # Determine network mode based on agent requirements
         # Allow network for agents that need API access, otherwise isolate
@@ -231,13 +229,11 @@ class DockerAgentRunner:
             "working_dir": "/workspace/agent-work",
             "environment": self._prepare_environment(env_vars),
             # Use volumes dict for Docker API (expects host paths)
-            # Read-only mount for input files
             "volumes": {
-                host_workspace_path: {"bind": "/workspace/input", "mode": "ro,z"}  # Read-only input
+                host_workspace_path: {"bind": "/workspace/agent-work", "mode": "rw,z"}  # Workspace for input/output
             },
-            # Use tmpfs for writable directories with hard size limits
+            # Use tmpfs for writable directories (not the workspace)
             "tmpfs": {
-                "/workspace/agent-work": "size=512m,mode=1777",  # Agent workspace with 512MB hard limit
                 "/home/appuser": "size=50m,mode=1777",  # Writable home directory
                 "/tmp": "size=100m,mode=1777",  # Temp directory
             },
@@ -247,6 +243,7 @@ class DockerAgentRunner:
             "cpu_quota": int(float(self.cpu_limit) * 100_000),  # CPU limit (100k = 1 CPU)
             "cpu_period": 100_000,   # CPU period (100ms)
             "detach": True,
+            "tty": True,  # Allocate TTY for line-buffered output
             # Security hardening as suggested
             "cap_drop": ["ALL"],  # Drop all capabilities
             "security_opt": ["no-new-privileges:true"],  # Prevent privilege escalation
@@ -328,9 +325,6 @@ class DockerAgentRunner:
                 if len(logs) > self.max_output_bytes:
                     logs = logs[:self.max_output_bytes] + "\n... [output truncated]"
                 
-                # Collect artifacts from tmpfs before container removal
-                artifacts = self._collect_artifacts_from_container(container, operation_id)
-                
                 # Clean up container
                 try:
                     container.remove()
@@ -341,8 +335,7 @@ class DockerAgentRunner:
                 return {
                     "stdout": logs,
                     "exit_code": exit_code,
-                    "runtime_error": None,
-                    "artifacts": artifacts
+                    "runtime_error": None
                 }
                 
             except ContainerError as e:
@@ -380,7 +373,6 @@ class DockerAgentRunner:
         stdout = exec_result["stdout"]
         exit_code = exec_result["exit_code"]
         runtime_error = exec_result["runtime_error"]
-        artifacts = exec_result.get("artifacts", [])
         
         logs = []
         if runtime_error:
@@ -430,7 +422,7 @@ class DockerAgentRunner:
             "status": status,
             "summary": summary,
             "result": parsed_json or {},
-            "artifacts": artifacts,  # Artifacts collected from container
+            "artifacts": [],  # Will be populated by caller
             "logs": logs,
             "stdout": stdout
         }
@@ -508,38 +500,48 @@ class DockerAgentRunner:
         return None
     
     def _collect_artifacts_from_container(self, container, operation_id: str) -> List[Dict]:
-        """Collect artifacts from container's tmpfs before it's destroyed."""
+        """Collect artifacts from container using get_archive (works on stopped containers)."""
         artifacts = []
         
         try:
-            # Use docker cp equivalent to extract artifacts from tmpfs
-            # List files in the output directory
-            exec_result = container.exec_run("find /workspace/agent-work/out -type f 2>/dev/null || true")
-            if exec_result.exit_code == 0 and exec_result.output:
-                artifact_paths = exec_result.output.decode('utf-8').strip().split('\n')
-                
-                for artifact_path in artifact_paths:
-                    if not artifact_path:
-                        continue
-                    
-                    try:
-                        # Extract file content from container
-                        exec_result = container.exec_run(f"cat {artifact_path}")
-                        if exec_result.exit_code == 0:
-                            content = exec_result.output
-                            filename = Path(artifact_path).name
-                            
-                            artifacts.append({
-                                "name": filename,
-                                "content": content,
-                                "size": len(content),
-                                "artifact_path": f"out/{filename}"
-                            })
-                            logger.info(f"[DOCKER] Collected artifact from tmpfs: {filename} ({len(content)} bytes)")
-                    except Exception as e:
-                        logger.warning(f"[DOCKER] Failed to collect artifact {artifact_path}: {e}")
+            import tarfile
+            import io
+            
+            # Try to get the entire output directory as tar archive
+            try:
+                bits, stat = container.get_archive("/workspace/agent-work/out")
+            except docker.errors.NotFound:
+                logger.debug(f"[DOCKER] No output directory found in container")
+                return artifacts
+            
+            # Extract tar stream
+            tar_stream = io.BytesIO()
+            for chunk in bits:
+                tar_stream.write(chunk)
+            tar_stream.seek(0)
+            
+            # Parse tar archive
+            with tarfile.open(fileobj=tar_stream, mode='r') as tar:
+                for member in tar.getmembers():
+                    if member.isfile():
+                        try:
+                            # Extract file content
+                            f = tar.extractfile(member)
+                            if f:
+                                content = f.read()
+                                filename = Path(member.name).name
+                                
+                                artifacts.append({
+                                    "name": filename,
+                                    "content": content,
+                                    "size": len(content),
+                                    "artifact_path": f"out/{filename}"
+                                })
+                                logger.info(f"[DOCKER] Collected artifact: {filename} ({len(content)} bytes)")
+                        except Exception as e:
+                            logger.warning(f"[DOCKER] Failed to extract {member.name}: {e}")
         except Exception as e:
-            logger.warning(f"[DOCKER] Failed to list artifacts: {e}")
+            logger.warning(f"[DOCKER] Failed to collect artifacts: {e}")
         
         return artifacts
     
@@ -625,12 +627,6 @@ class DockerAgentRunner:
             stdout = logs_result.get("stdout", "")
             exit_code = status_result.get("exit_code", -1)
             
-            # Collect artifacts from tmpfs before container removal
-            artifacts = await loop.run_in_executor(
-                None, 
-                lambda: self._collect_artifacts_from_container(container, operation_id)
-            )
-            
             # Clean up container (keep failed containers for debugging)
             try:
                 if exit_code == 0:
@@ -680,7 +676,7 @@ class DockerAgentRunner:
                 "status": status,
                 "summary": summary,
                 "result": parsed_json or {},
-                "artifacts": artifacts,  # Collected from tmpfs
+                "artifacts": [],  # Will be populated by caller
                 "logs": [],  # Logs already streamed to task store
                 "stdout": stdout
             }
