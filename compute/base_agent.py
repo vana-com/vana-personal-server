@@ -313,9 +313,9 @@ class BaseAgentProvider(BaseCompute, ABC):
         env_vars = self.get_env_overrides()
         
         # Determine if we should use stdin for the prompt
-        # Gemini CLI works better with stdin for long prompts
+        # Both Gemini and Qwen CLIs support stdin for long prompts (better than -p for complex prompts)
         stdin_input = None
-        if self.AGENT_TYPE == "gemini" and prompt:
+        if self.AGENT_TYPE in ["gemini", "qwen"] and prompt:
             stdin_input = prompt
             logger.info(f"[{self.AGENT_TYPE}] Using stdin for prompt (length: {len(prompt)})")
         else:
