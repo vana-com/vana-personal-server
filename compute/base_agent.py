@@ -312,14 +312,10 @@ class BaseAgentProvider(BaseCompute, ABC):
         # Get environment variables for the agent
         env_vars = self.get_env_overrides()
         
-        # Determine if we should use stdin for the prompt
-        # Both Gemini and Qwen CLIs support stdin for long prompts (better than -p for complex prompts)
+        # Both Gemini and Qwen use -p flag for non-interactive prompt mode
+        # No stdin needed since prompt is passed as argument
         stdin_input = None
-        if self.AGENT_TYPE in ["gemini", "qwen"] and prompt:
-            stdin_input = prompt
-            logger.info(f"[{self.AGENT_TYPE}] Using stdin for prompt (length: {len(prompt)})")
-        else:
-            logger.info(f"[{self.AGENT_TYPE}] Not using stdin (agent_type={self.AGENT_TYPE}, has_prompt={bool(prompt)})")
+        logger.info(f"[{self.AGENT_TYPE}] Using -p flag for non-interactive prompt mode (length: {len(prompt) if prompt else 0})")
         
         # Execute in Docker container with streaming
         result = await self.docker_runner.execute_agent(
@@ -330,7 +326,7 @@ class BaseAgentProvider(BaseCompute, ABC):
             env_vars=env_vars,
             operation_id=operation_id,
             task_store=self._task_store,  # Enable streaming logs
-            stdin_input=stdin_input  # Pass prompt via stdin if needed
+            stdin_input=stdin_input  # No stdin needed, using -p flag
         )
         
         return result

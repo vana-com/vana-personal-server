@@ -54,11 +54,11 @@ class GeminiAgentProvider(BaseAgentProvider):
 
     def get_cli_args(self, prompt: str) -> List[str]:
         """Get CLI arguments for Gemini CLI."""
+        # Use -p for non-interactive prompt mode
         # Use -y (yolo mode) to enable write tools and auto-approve
         # Use --sandbox=false to disable Gemini's built-in Docker sandbox
         # (we're already running inside our own sandbox container)
-        # Prompt will be passed via stdin to handle long inputs
-        return ["-y", "--sandbox=false"]
+        return ["-p", prompt, "-y", "--sandbox=false"]
 
     def build_prompt(self, goal: str, files_dict: Dict[str, bytes] = None) -> str:
         """Build a prompt for Gemini CLI that requests artifacts."""

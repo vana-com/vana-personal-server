@@ -59,10 +59,10 @@ class QwenCodeAgentProvider(BaseAgentProvider):
     
     def get_cli_args(self, prompt: str) -> List[str]:
         """Get CLI arguments for qwen-code."""
+        # Use -p for non-interactive prompt mode
         # Use -y (yolo mode) to enable write tools and auto-approve
         # Use --sandbox=false to disable built-in Docker sandbox since we're already sandboxed
-        # Prompt will be passed via stdin (same as Gemini)
-        return ["-y", "--sandbox=false"]
+        return ["-p", prompt, "-y", "--sandbox=false"]
     
     def get_env_overrides(self) -> Dict[str, str]:
         """Get environment variable overrides for API authentication."""
