@@ -710,12 +710,16 @@ class DockerAgentRunner:
                     line = "... [output truncated]"
                     stdout_lines.append(line)
                     log_batch.append(line)
+                    logger.info(f"[DOCKER-{agent_type}-STREAM] {line}")
                     await task_store.append_logs(operation_id, log_batch)
                     break
                 
                 stdout_lines.append(line)
                 log_batch.append(line)
                 total_size += len(line)
+                
+                # Also log to console for real-time viewing
+                logger.info(f"[DOCKER-{agent_type}-STREAM] {line}")
                 
                 # Check for sentinel
                 if SENTINEL in line:
@@ -737,6 +741,7 @@ class DockerAgentRunner:
                         line = line_bytes.decode('utf-8', errors='ignore').rstrip()
                         stdout_lines.append(line)
                         log_batch.append(line)
+                        logger.info(f"[DOCKER-{agent_type}-STREAM] {line}")
                         remaining_count += 1
                     
                     # Final batch update

@@ -1,24 +1,34 @@
-# Agent Sandbox Dockerfile - Minimal secure container for AI agent execution
+# Agent Sandbox Dockerfile - Secure container for AI agent execution
 # Implements "Agent-in-a-Box" pattern with strict security controls
+# Using Debian for better compatibility with Gemini CLI expectations
 
-FROM node:20-alpine
+FROM node:20-bookworm-slim
 
-# Install minimal system dependencies
-RUN apk add --no-cache \
-    # Basic utilities for agent CLIs
+# Install system dependencies that Gemini CLI expects
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Version control
     ca-certificates \
     curl \
     git \
-    # Shell utilities needed by agents
-    coreutils \
-    # Required for some npm packages
+    # Shell and process tools (GNU versions)
+    bash \
+    procps \
+    # Build tools for npm packages
     python3 \
     make \
     g++ \
-    && rm -rf /var/cache/apk/*
+    # Locale support for Gemini
+    locales \
+    && rm -rf /var/lib/apt/lists/* \
+    && locale-gen en_US.UTF-8
+
+# Set locale environment for Gemini
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
 # Create non-root user for secure execution
-RUN adduser -D -s /bin/sh appuser
+RUN useradd -m -s /bin/bash -u 1001 appuser
 
 # Set working directory
 WORKDIR /workspace
