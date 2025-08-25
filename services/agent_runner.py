@@ -216,7 +216,9 @@ class DockerAgentRunner:
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
         
         # Check if stdin input file exists and pipe it to the command
-        full_command = ["sh", "-c", f"if [ -f .stdin_input ]; then cat .stdin_input | {command} {escaped_args}; else {command} {escaped_args}; fi"]
+        # Use stdbuf to force line buffering for better real-time output
+        buffered_command = f"stdbuf -oL -eL {command}"
+        full_command = ["sh", "-c", f"if [ -f .stdin_input ]; then cat .stdin_input | {buffered_command} {escaped_args}; else {buffered_command} {escaped_args}; fi"]
         
         # Determine network mode based on agent requirements
         # Allow network for agents that need API access, otherwise isolate
