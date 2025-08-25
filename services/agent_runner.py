@@ -534,7 +534,7 @@ class DockerAgentRunner:
                                     "name": filename,
                                     "content": content,
                                     "size": len(content),
-                                    "artifact_path": f"out/{filename}"
+                                    "artifact_path": filename
                                 })
                                 logger.info(f"[DOCKER] Collected artifact: {filename} ({len(content)} bytes)")
                         except Exception as e:
@@ -559,7 +559,7 @@ class DockerAgentRunner:
                             "name": file_path.name,
                             "content": content,
                             "size": len(content),
-                            "artifact_path": f"out/{file_path.name}"
+                            "artifact_path": file_path.name
                         })
                         logger.info(f"[DOCKER] Collected artifact: {file_path.name} ({len(content)} bytes)")
                     except Exception as e:

@@ -350,17 +350,16 @@ class BaseAgentProvider(BaseCompute, ABC):
             filename = artifact.get("name")
             
             if content and filename:
-                # Store in artifact storage using the full artifact path
-                artifact_path = artifact.get("artifact_path", f"out/{filename}")
+                # Store in artifact storage using just the filename (no out/ prefix)
                 await self.artifact_storage.store_artifact(
-                    operation_id, artifact_path, content, grantee_address
+                    operation_id, filename, content, grantee_address
                 )
                 
                 # Add metadata for result
                 artifacts_metadata.append({
                     "name": filename,
                     "size": artifact.get("size", len(content)),
-                    "artifact_path": artifact_path
+                    "artifact_path": filename
                 })
         
         return artifacts_metadata
