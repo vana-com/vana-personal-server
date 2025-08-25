@@ -9,6 +9,8 @@ RUN apk add --no-cache \
     ca-certificates \
     curl \
     git \
+    # Shell utilities needed by agents
+    coreutils \
     # Required for some npm packages
     python3 \
     make \

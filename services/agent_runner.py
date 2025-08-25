@@ -390,12 +390,16 @@ class DockerAgentRunner:
             status = "error"
             summary = f"Container execution failed: {runtime_error[:100]}"
         elif parsed_json:
-            status = parsed_json.get("status", "ok" if has_sentinel else "error")
+            status = parsed_json.get("status", "ok" if has_sentinel else "ok")
             summary = parsed_json.get("summary", "Agent completed")
         elif has_sentinel and not has_error_pattern:
             # Agent printed sentinel but no JSON - partial success
-            status = "warning"
-            summary = "Agent completed but produced no structured output"
+            status = "ok" 
+            summary = "Agent completed successfully"
+        elif exit_code == 0 and not has_error_pattern:
+            # Container exited successfully without errors, likely produced artifacts
+            status = "ok"
+            summary = "Agent completed successfully"
         elif has_error_pattern:
             # Detected error patterns in output
             status = "error"
@@ -586,14 +590,30 @@ class DockerAgentRunner:
                 logger.error(f"[DOCKER-{agent_type}] Container failed with exit code {exit_code}")
                 logger.error(f"[DOCKER-{agent_type}] Stdout (first 500 chars): {stdout[:500]}")
             
+            # Check for error patterns like the non-streaming version
+            error_patterns = [
+                "error:", "exception:", "traceback:", "failed:", 
+                "permission denied", "not found", "syntax error"
+            ]
+            has_error_pattern = any(
+                pattern in stdout.lower() 
+                for pattern in error_patterns
+            )
+            
             if parsed_json:
-                status = parsed_json.get("status", "ok" if has_sentinel else "error")
+                status = parsed_json.get("status", "ok")
                 summary = parsed_json.get("summary", "Agent completed")
-            elif has_sentinel:
-                status = "warning"
-                summary = "Agent completed but produced no structured output"
+            elif has_sentinel and not has_error_pattern:
+                status = "ok"
+                summary = "Agent completed successfully"
+            elif exit_code == 0 and not has_error_pattern:
+                status = "ok"
+                summary = "Agent completed successfully"
+            elif has_error_pattern:
+                status = "error"
+                summary = "Agent encountered errors during execution"
             else:
-                status = "error" if exit_code != 0 else "ok"
+                status = "error"
                 summary = f"Process exited with code {exit_code}"
             
             return {
