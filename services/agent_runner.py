@@ -217,8 +217,7 @@ class DockerAgentRunner:
         # First copy input files to working directory, then run command
         # This allows agents to find input files in their working directory while keeping inputs read-only
         copy_cmd = "cp -r /workspace/input/* /workspace/agent-work/ 2>/dev/null || true"
-        stdin_check = "if [ -f /workspace/agent-work/.stdin_input ]; then cat /workspace/agent-work/.stdin_input | "
-        full_command = ["sh", "-c", f"{copy_cmd} && {stdin_check}{command} {escaped_args}; else {command} {escaped_args}; fi"]
+        full_command = ["sh", "-c", f"{copy_cmd} && cd /workspace/agent-work && if [ -f .stdin_input ]; then cat .stdin_input | {command} {escaped_args}; else {command} {escaped_args}; fi"]
         
         # Determine network mode based on agent requirements
         # Allow network for agents that need API access, otherwise isolate
