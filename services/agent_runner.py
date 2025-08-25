@@ -216,9 +216,7 @@ class DockerAgentRunner:
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
         
         # Check if stdin input file exists and pipe it to the command
-        # Use stdbuf to force line buffering for better real-time output
-        buffered_command = f"stdbuf -oL -eL {command}"
-        full_command = ["sh", "-c", f"if [ -f .stdin_input ]; then cat .stdin_input | {buffered_command} {escaped_args}; else {buffered_command} {escaped_args}; fi"]
+        full_command = ["sh", "-c", f"if [ -f .stdin_input ]; then cat .stdin_input | {command} {escaped_args}; else {command} {escaped_args}; fi"]
         
         # Determine network mode based on agent requirements
         # Allow network for agents that need API access, otherwise isolate
@@ -742,10 +740,10 @@ class DockerAgentRunner:
                 if len(current_logs) > last_log_size:
                     new_content = current_logs[last_log_size:]
                     
-                    # Log new lines to console
-                    for line in new_content.splitlines():
-                        if line.strip():
-                            logger.info(f"[DOCKER-{agent_type}-STREAM] {line}")
+                    # Log new content (may be one line or multiple)
+                    # Just log what we get without trying to be clever
+                    if new_content.strip():
+                        logger.info(f"[DOCKER-{agent_type}] {new_content.strip()}")
                     
                     # Update task store with new content
                     if new_content.strip():
@@ -762,8 +760,8 @@ class DockerAgentRunner:
                 if SENTINEL in all_logs:
                     break
                 
-                # Wait before next check (shorter interval for better streaming)
-                await asyncio.sleep(0.5)
+                # Wait before next check
+                await asyncio.sleep(2)
             
             return {"stdout": all_logs}
             

@@ -54,10 +54,9 @@ class GeminiAgentProvider(BaseAgentProvider):
     
     def get_cli_args(self, prompt: str) -> List[str]:
         """Get CLI arguments for Gemini CLI."""
-        # Use -y (yolo mode) to enable write tools
-        # Use -p to run in batch mode (non-interactive) for proper streaming
-        # The actual prompt will still be passed via stdin to handle long inputs
-        return ["-y", "-p", "-"]
+        # Use -y (yolo mode) to enable write tools and auto-approve
+        # Prompt will be passed via stdin to handle long inputs
+        return ["-y"]
     
     def build_prompt(self, goal: str, files_dict: Dict[str, bytes] = None) -> str:
         """Build a prompt for Gemini CLI that requests artifacts."""
