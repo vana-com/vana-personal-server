@@ -1,5 +1,9 @@
 .env*
 !.env.example
+
+# Agent workspaces (temporary files for agent execution)
+.agent_workspaces/
+
 # Python cache
 venv
 __pycache__/
