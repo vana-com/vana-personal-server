@@ -24,7 +24,7 @@ services:
       - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN:-mock-token-for-testing}
       
       # Agent runtime configuration
-      - AGENT_RUNTIME=${AGENT_RUNTIME:-docker}  # Set to 'process' for Cloud Run testing
+      - AGENT_RUNTIME=${AGENT_RUNTIME:-process}  # Testing process runtime locally
       
       # Docker agent configuration (when AGENT_RUNTIME=docker)
       - DOCKER_AGENT_TIMEOUT_SEC=180

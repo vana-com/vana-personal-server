@@ -261,6 +261,7 @@ class ProcessAgentRunner:
         process_env.update({
             "PYTHONUNBUFFERED": "1",  # Force line buffering
             "NO_COLOR": "1",  # Disable color output
+            "PATH": "/app/node_modules/.bin:" + os.environ.get("PATH", ""),  # Add node_modules to PATH
         })
         
         logger.info(f"[PROCESS-{agent_type}] Executing: {' '.join(full_command)}")
@@ -277,6 +278,12 @@ class ProcessAgentRunner:
                 stderr=asyncio.subprocess.PIPE,
                 preexec_fn=self._prepare_resource_limits()
             )
+            
+            # Check if process started successfully
+            if proc.returncode is not None:
+                logger.error(f"[PROCESS-{agent_type}] Process exited immediately with code {proc.returncode}")
+                stderr = await proc.stderr.read() if proc.stderr else b""
+                raise RuntimeError(f"Process failed to start: exit code {proc.returncode}, stderr: {stderr.decode('utf-8', errors='ignore')}")
             
             # Stream logs and collect output
             return await self._handle_process_output(
@@ -333,6 +340,15 @@ class ProcessAgentRunner:
             
             # Wait for process to complete
             return_code = await proc.wait()
+            
+            # Also capture stderr if there was an error
+            if return_code != 0 and proc.stderr:
+                stderr = await proc.stderr.read()
+                if stderr:
+                    stderr_str = stderr.decode("utf-8", errors="ignore").strip()
+                    if stderr_str:
+                        logs.append(f"STDERR: {stderr_str}")
+                        logger.error(f"[PROCESS-{agent_type}] Process stderr: {stderr_str}")
             
         except asyncio.TimeoutError:
             logger.warning(f"[PROCESS-{agent_type}] Process timed out, killing...")
