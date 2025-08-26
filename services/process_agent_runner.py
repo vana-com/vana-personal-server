@@ -227,11 +227,11 @@ class ProcessAgentRunner:
     def _prepare_resource_limits(self):
         """Prepare resource limit function for preexec_fn."""
         def apply_limits():
-            # Set memory limit (address space)
-            memory_bytes = self.memory_limit_mb * 1024 * 1024
-            resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
+            # Note: Node.js needs significant virtual memory for V8 heap
+            # We skip RLIMIT_AS for Node processes as it causes immediate OOM
+            # Instead rely on container-level memory limits
             
-            # Set file size limit
+            # Set file size limit (this is safe for all processes)
             file_size_bytes = self.file_size_limit_mb * 1024 * 1024
             resource.setrlimit(resource.RLIMIT_FSIZE, (file_size_bytes, file_size_bytes))
             

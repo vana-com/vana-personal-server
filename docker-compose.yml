@@ -32,7 +32,7 @@ services:
       
       # Process agent configuration (when AGENT_RUNTIME=process)
       - AGENT_MAX_CONCURRENT_PER_INSTANCE=${AGENT_MAX_CONCURRENT_PER_INSTANCE:-1}
-      - AGENT_MEMORY_LIMIT_MB=${AGENT_MEMORY_LIMIT_MB:-768}
+      - AGENT_MEMORY_LIMIT_MB=${AGENT_MEMORY_LIMIT_MB:-2048}  # Node.js needs more virtual memory
       - AGENT_TIMEOUT_SEC=180
       - AGENT_FILE_SIZE_LIMIT_MB=100
       - AGENT_MAX_OUTPUT_MB=2

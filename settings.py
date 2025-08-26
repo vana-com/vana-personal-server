@@ -284,9 +284,9 @@ class Settings(BaseSettings):
     )
     
     agent_memory_limit_mb: int = Field(
-        default=768,
+        default=2048,
         alias="AGENT_MEMORY_LIMIT_MB",
-        description="Memory limit per agent process in megabytes"
+        description="Memory limit per agent process in megabytes (Note: Node.js needs significant virtual memory)"
     )
     
     agent_timeout_sec: int = Field(
