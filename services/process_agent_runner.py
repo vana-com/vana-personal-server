@@ -57,6 +57,7 @@ class ProcessAgentRunner:
         timeout_sec: int = 300,
         max_output_bytes: int = 2_000_000,
         file_size_limit_mb: int = 100,
+        allow_network: bool = True,  # Processes have network access by default
     ):
         """
         Initialize process agent runner.
@@ -66,11 +67,13 @@ class ProcessAgentRunner:
             timeout_sec: Timeout for agent execution
             max_output_bytes: Maximum stdout/stderr to capture
             file_size_limit_mb: Maximum file size per write operation
+            allow_network: Whether to allow network access (compatibility with DockerAgentRunner)
         """
         self.memory_limit_mb = memory_limit_mb
         self.timeout_sec = timeout_sec
         self.max_output_bytes = max_output_bytes
         self.file_size_limit_mb = file_size_limit_mb
+        self.allow_network = allow_network
         
         logger.info(f"[PROCESS] ProcessAgentRunner initialized:")
         logger.info(f"[PROCESS]   Memory limit: {memory_limit_mb}MB")
