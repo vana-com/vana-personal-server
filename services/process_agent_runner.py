@@ -262,6 +262,9 @@ class ProcessAgentRunner:
             "PYTHONUNBUFFERED": "1",  # Force line buffering
             "NO_COLOR": "1",  # Disable color output
             "PATH": "/app/node_modules/.bin:" + os.environ.get("PATH", ""),  # Add node_modules to PATH
+            "HOME": str(workspace_path),  # Set HOME to the workspace directory
+            "USER": "appuser",  # Set USER to avoid os.userInfo() errors
+            "NODE_ENV": "production",  # Set Node environment
         })
         
         logger.info(f"[PROCESS-{agent_type}] Executing: {' '.join(full_command)}")
