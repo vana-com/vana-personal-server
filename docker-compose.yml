@@ -23,7 +23,21 @@ services:
       # Replicate API token (required but not used in mock mode)
       - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN:-mock-token-for-testing}
       
-      # Agent configuration (development mode - using OAuth)
+      # Agent runtime configuration
+      - AGENT_RUNTIME=${AGENT_RUNTIME:-docker}  # Set to 'process' for Cloud Run testing
+      
+      # Docker agent configuration (when AGENT_RUNTIME=docker)
+      - DOCKER_AGENT_TIMEOUT_SEC=180
+      - DOCKER_AGENT_MAX_OUTPUT_MB=2
+      
+      # Process agent configuration (when AGENT_RUNTIME=process)
+      - AGENT_MAX_CONCURRENT_PER_INSTANCE=${AGENT_MAX_CONCURRENT_PER_INSTANCE:-1}
+      - AGENT_MEMORY_LIMIT_MB=${AGENT_MEMORY_LIMIT_MB:-768}
+      - AGENT_TIMEOUT_SEC=180
+      - AGENT_FILE_SIZE_LIMIT_MB=100
+      - AGENT_MAX_OUTPUT_MB=2
+      
+      # Individual agent configuration (development mode - using OAuth)
       - QWEN_TIMEOUT_SEC=180
       - QWEN_MAX_STDOUT_MB=2
       - GEMINI_TIMEOUT_SEC=180

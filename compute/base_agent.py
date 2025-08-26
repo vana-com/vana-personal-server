@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
 from domain.entities import GrantFile
 from services.task_store import TaskStatus, get_task_store
-from services.agent_runner import DockerAgentRunner
+from services.agent_runtime_factory import create_agent_runner
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +35,14 @@ class BaseAgentProvider(BaseCompute, ABC):
     AGENT_TYPE = "base"
     REQUIRES_NETWORK = False  # Set to True for agents that need API access
     
-    def __init__(self, task_store=None, artifact_storage=None, docker_runner=None):
+    def __init__(self, task_store=None, artifact_storage=None, agent_runner=None):
         """
         Initialize with injected dependencies.
         
         Args:
             task_store: Task storage service (uses global if not provided)
             artifact_storage: Artifact storage service (lazy loaded if not provided)
-            docker_runner: Docker agent runner (lazy loaded if not provided)
+            agent_runner: Agent runner (Docker or Process, lazy loaded if not provided)
         """
         # Configuration (subclasses should set these)
         self.settings = None
@@ -55,7 +55,7 @@ class BaseAgentProvider(BaseCompute, ABC):
         # Injected dependencies
         self._task_store = task_store or get_task_store()
         self._artifact_storage = artifact_storage
-        self._docker_runner = docker_runner
+        self._agent_runner = agent_runner
     
     @property
     def artifact_storage(self):
@@ -66,21 +66,16 @@ class BaseAgentProvider(BaseCompute, ABC):
         return self._artifact_storage
     
     @property
-    def docker_runner(self):
-        """Lazy load Docker agent runner with configuration from settings."""
-        if self._docker_runner is None:
-            from settings import get_settings
-            settings = get_settings()
+    def agent_runner(self):
+        """Lazy load agent runner (Docker or Process) based on configuration."""
+        if self._agent_runner is None:
+            self._agent_runner = create_agent_runner()
             
-            self._docker_runner = DockerAgentRunner(
-                image_name=settings.docker_agent_image,
-                memory_limit=settings.docker_agent_memory_limit,
-                timeout_sec=settings.docker_agent_timeout_sec,
-                max_output_bytes=settings.docker_agent_max_output_mb * 1_000_000,
-                cpu_limit=settings.docker_agent_cpu_limit or "1.0",
-                allow_network=self.REQUIRES_NETWORK  # Pass network requirement
-            )
-        return self._docker_runner
+            # Set network requirement for Docker runners
+            if hasattr(self._agent_runner, 'allow_network'):
+                self._agent_runner.allow_network = self.REQUIRES_NETWORK
+        
+        return self._agent_runner
     
     @abstractmethod
     def get_cli_command(self) -> str:
@@ -317,8 +312,8 @@ class BaseAgentProvider(BaseCompute, ABC):
         stdin_input = None
         logger.info(f"[{self.AGENT_TYPE}] Using -p flag for non-interactive prompt mode (length: {len(prompt) if prompt else 0})")
         
-        # Execute in Docker container with streaming
-        result = await self.docker_runner.execute_agent(
+        # Execute agent with appropriate runner (Docker or Process)
+        result = await self.agent_runner.execute_agent(
             agent_type=self.AGENT_TYPE,
             command=command,
             args=args,

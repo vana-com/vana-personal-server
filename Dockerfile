@@ -33,6 +33,9 @@ RUN poetry config virtualenvs.create false \
 # Using --chown flag to set ownership during copy (no separate chown needed!)
 COPY --chown=appuser:appuser . .
 
+# 5. Set PATH to include node_modules/.bin for agent CLIs
+ENV PATH="/app/node_modules/.bin:${PATH}"
+
 # 6. Switch to the non-root user for running the application
 USER appuser
 
