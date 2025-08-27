@@ -16,7 +16,7 @@ class TestOperationsAPI:
         # Mock data
         mock_request = CreateOperationRequest(
             app_signature="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1b",
-            operation_request_json='{"permission_id": 1, "app_address": "0xd7Ae9319049f0B6cA9AD044b165c5B4F143EF451"}'
+            operation_request_json='{"permission_id": 1}'
         )
         
         mock_prediction_response = Mock(spec=ReplicatePredictionResponse)
@@ -28,7 +28,7 @@ class TestOperationsAPI:
             mock_service.create.return_value = mock_prediction_response
             
             # Make request
-            response = client.post("/operations", json=mock_request.dict())
+            response = client.post("/operations", json=mock_request.model_dump())
             
             # Assertions
             assert response.status_code == 202
@@ -46,7 +46,7 @@ class TestOperationsAPI:
         """Test operation creation when service raises exception."""
         mock_request = CreateOperationRequest(
             app_signature="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1b",
-            operation_request_json='{"permission_id": 1, "app_address": "0xd7Ae9319049f0B6cA9AD044b165c5B4F143EF451"}'
+            operation_request_json='{"permission_id": 1}'
         )
         
         with patch('api.operations.operations_service') as mock_service:
@@ -54,7 +54,7 @@ class TestOperationsAPI:
             mock_service.create.side_effect = Exception("Service error")
             
             # Make request
-            response = client.post("/operations", json=mock_request.dict())
+            response = client.post("/operations", json=mock_request.model_dump())
             
             # Assertions
             assert response.status_code == 500
