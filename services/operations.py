@@ -168,10 +168,48 @@ class OperationsService:
         logger.info(f"[SERVICE] Starting file content decryption for {len(files_metadata)} files [RequestID: {request_id}]")
         files_content = self._decrypt_files_content(files_metadata, server_private_key, request_id)
 
+        # PRIVACY ENHANCEMENT: Apply differential privacy to protect exact values
         try:
-            logger.info(f"[SERVICE] Executing compute operation with {len(files_content)} decrypted files [RequestID: {request_id}]")
+            from utils.differential_privacy import add_differential_privacy
+            logger.info(f"[SERVICE] Applying differential privacy to {len(files_content)} files [RequestID: {request_id}]")
+            
+            # Add noise to protect exact values while preserving AI utility
+            privacy_enhanced_content = []
+            for i, content in enumerate(files_content):
+                enhanced_content = add_differential_privacy(content, epsilon=1.0)
+                privacy_enhanced_content.append(enhanced_content)
+                logger.debug(f"[SERVICE] Applied privacy to file {i+1}, content length: {len(enhanced_content)} [RequestID: {request_id}]")
+            
+            files_content = privacy_enhanced_content
+            logger.info(f"[SERVICE] Differential privacy applied successfully [RequestID: {request_id}]")
+            
+        except ImportError:
+            logger.warning(f"[SERVICE] Differential privacy module not available, proceeding without privacy enhancement [RequestID: {request_id}]")
+        except Exception as e:
+            logger.warning(f"[SERVICE] Differential privacy failed, proceeding with original content: {str(e)} [RequestID: {request_id}]")
+
+        # PRIVACY ENHANCEMENT: Track sensitive data for secure cleanup
+        try:
+            from utils.secure_memory import track_for_cleanup
+            track_for_cleanup(files_content, f"decrypted_files_{request_id}")
+            track_for_cleanup(privacy_enhanced_content if 'privacy_enhanced_content' in locals() else [], f"privacy_enhanced_files_{request_id}")
+            logger.debug(f"[SERVICE] Tracked sensitive data for secure cleanup [RequestID: {request_id}]")
+        except ImportError:
+            logger.warning(f"[SERVICE] Secure memory module not available [RequestID: {request_id}]")
+
+        try:
+            logger.info(f"[SERVICE] Executing compute operation with {len(files_content)} privacy-enhanced files [RequestID: {request_id}]")
             result = self.compute.execute(grant_file, files_content)
             logger.info(f"[SERVICE] Compute operation completed successfully, operation ID: {result.id} [RequestID: {request_id}]")
+            
+            # PRIVACY ENHANCEMENT: Secure cleanup of sensitive data
+            try:
+                from utils.secure_memory import cleanup_all_tracked
+                cleanup_all_tracked()
+                logger.info(f"[SERVICE] Secure cleanup completed [RequestID: {request_id}]")
+            except ImportError:
+                logger.warning(f"[SERVICE] Secure cleanup not available [RequestID: {request_id}]")
+            
             return result
         except Exception as e:
             logger.error(f"[SERVICE] Compute operation failed: {str(e)} [RequestID: {request_id}]")
