@@ -133,6 +133,18 @@ async def get_operation(
             field=getattr(e, 'field', None)
         )
         raise HTTPException(status_code=e.status_code, detail=error_response.model_dump())
+    except ValueError as e:
+        # Handle "Operation not found" errors
+        if "not found" in str(e).lower():
+            processing_time = time.time() - start_time
+            logger.warning(f"[API] Operation {operation_id} not found [RequestID: {request_id}] [ProcessingTime: {processing_time:.3f}s]")
+            error_response = ErrorResponse(
+                detail=f"Operation {operation_id} not found",
+                error_code="NOT_FOUND_ERROR"
+            )
+            raise HTTPException(status_code=404, detail=error_response.model_dump())
+        # Re-raise if it's a different ValueError
+        raise
     except Exception as e:
         processing_time = time.time() - start_time
         logger.error(f"[API] Unexpected exception in get_operation({operation_id}): {str(e)} [RequestID: {request_id}] [ProcessingTime: {processing_time:.3f}s]")

@@ -271,9 +271,9 @@ class Settings(BaseSettings):
 
     # Agent Runtime Configuration
     agent_runtime: str = Field(
-        default="docker",
+        default="process",
         alias="AGENT_RUNTIME",
-        description="Agent execution runtime: 'docker' for local/dev, 'process' for Cloud Run"
+        description="Agent execution runtime: 'process' for Cloud Run (default), 'docker' for local/dev"
     )
     
     # Process Agent Configuration (for Cloud Run)

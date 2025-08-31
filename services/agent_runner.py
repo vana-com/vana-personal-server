@@ -373,14 +373,17 @@ class DockerAgentRunner:
         exit_code = exec_result["exit_code"]
         runtime_error = exec_result["runtime_error"]
         
-        logs = []
-        if runtime_error:
-            logs.append(f"Runtime error: {runtime_error}")
-        if exit_code != 0:
-            logs.append(f"Process exited with code: {exit_code}")
-        
         # Parse JSON result from output
         parsed_json = self._parse_agent_result(stdout)
+        
+        # Extract clean logs from stdout (excluding JSON and sentinel)
+        clean_logs = self._extract_logs_from_stdout(stdout)
+        
+        # Add runtime errors to logs if any
+        if runtime_error:
+            clean_logs.append(f"Runtime error: {runtime_error}")
+        if exit_code != 0 and exit_code != -1:
+            clean_logs.append(f"Process exited with code: {exit_code}")
         
         # Determine final status with comprehensive fallbacks
         has_sentinel = SENTINEL in stdout
@@ -400,7 +403,7 @@ class DockerAgentRunner:
             summary = f"Container execution failed: {runtime_error[:100]}"
         elif parsed_json:
             status = parsed_json.get("status", "ok" if has_sentinel else "ok")
-            summary = parsed_json.get("summary", "Agent completed")
+            summary = parsed_json.get("summary", "Agent completed successfully")
         elif has_sentinel and not has_error_pattern:
             # Agent printed sentinel but no JSON - partial success
             status = "ok" 
@@ -420,9 +423,9 @@ class DockerAgentRunner:
         return {
             "status": status,
             "summary": summary,
-            "result": parsed_json or {},
+            "result": parsed_json.get("result", {}) if parsed_json else {},
             "artifacts": [],  # Will be populated by caller
-            "logs": logs,
+            "logs": clean_logs,
             "stdout": stdout
         }
     
@@ -441,6 +444,35 @@ class DockerAgentRunner:
         secure_env.update(env_vars)
         
         return secure_env
+    
+    def _extract_logs_from_stdout(self, stdout: str) -> List[str]:
+        """Extract clean logs from stdout, excluding JSON output and sentinel."""
+        logs = []
+        lines = stdout.split('\n')
+        json_found = False
+        
+        for line in lines:
+            # Skip empty lines
+            if not line.strip():
+                continue
+            
+            # Skip sentinel line
+            if SENTINEL in line:
+                break
+            
+            # Try to detect JSON output (agent result)
+            if not json_found and line.strip().startswith('{'):
+                try:
+                    json.loads(line.strip())
+                    json_found = True
+                    continue  # Skip JSON line
+                except (json.JSONDecodeError, ValueError):
+                    pass  # Not JSON, include in logs
+            
+            # Include the line in logs
+            logs.append(line.rstrip())
+        
+        return logs
     
     def _parse_agent_result(self, output: str) -> Optional[Dict]:
         """
@@ -640,10 +672,15 @@ class DockerAgentRunner:
             parsed_json = self._parse_agent_result(stdout)
             has_sentinel = SENTINEL in stdout
             
+            # Extract clean logs from stdout
+            clean_logs = self._extract_logs_from_stdout(stdout)
+            
             # Log stdout for debugging failed containers
             if exit_code != 0:
                 logger.error(f"[DOCKER-{agent_type}] Container failed with exit code {exit_code}")
                 logger.error(f"[DOCKER-{agent_type}] Stdout (first 500 chars): {stdout[:500]}")
+                if exit_code != -1:
+                    clean_logs.append(f"Process exited with code: {exit_code}")
             
             # Check for error patterns like the non-streaming version
             error_patterns = [
@@ -657,7 +694,7 @@ class DockerAgentRunner:
             
             if parsed_json:
                 status = parsed_json.get("status", "ok")
-                summary = parsed_json.get("summary", "Agent completed")
+                summary = parsed_json.get("summary", "Agent completed successfully")
             elif has_sentinel and not has_error_pattern:
                 status = "ok"
                 summary = "Agent completed successfully"
@@ -674,9 +711,9 @@ class DockerAgentRunner:
             return {
                 "status": status,
                 "summary": summary,
-                "result": parsed_json or {},
+                "result": parsed_json.get("result", {}) if parsed_json else {},
                 "artifacts": [],  # Will be populated by caller
-                "logs": [],  # Logs already streamed to task store
+                "logs": clean_logs,  # Clean logs extracted from stdout
                 "stdout": stdout
             }
             

@@ -269,6 +269,7 @@ class ProcessAgentRunner:
         
         logger.info(f"[PROCESS-{agent_type}] Executing: {' '.join(full_command)}")
         logger.debug(f"[PROCESS-{agent_type}] Working directory: {workspace_path}")
+        logger.info(f"[PROCESS-{agent_type}] Running as UID={os.getuid()}, GID={os.getgid()}")
         
         try:
             # Create subprocess with resource limits
@@ -308,7 +309,6 @@ class ProcessAgentRunner:
         """Handle process output with streaming and timeout."""
         
         stdout_lines = []
-        logs = []
         
         try:
             # Send stdin if provided
@@ -327,7 +327,6 @@ class ProcessAgentRunner:
                     
                     line_str = line.decode("utf-8", errors="ignore").rstrip()
                     stdout_lines.append(line_str)
-                    logs.append(line_str)
                     
                     # Stream logs to task store if available
                     if task_store:
@@ -350,7 +349,7 @@ class ProcessAgentRunner:
                 if stderr:
                     stderr_str = stderr.decode("utf-8", errors="ignore").strip()
                     if stderr_str:
-                        logs.append(f"STDERR: {stderr_str}")
+                        stdout_lines.append(f"STDERR: {stderr_str}")
                         logger.error(f"[PROCESS-{agent_type}] Process stderr: {stderr_str}")
             
         except asyncio.TimeoutError:
@@ -361,6 +360,9 @@ class ProcessAgentRunner:
                 await proc.wait()
             except Exception as e:
                 logger.error(f"[PROCESS-{agent_type}] Failed to kill process: {e}")
+            
+            # Create logs from stdout excluding JSON/sentinel
+            logs = self._extract_logs_from_stdout(stdout_lines)
             
             return {
                 "status": "error",
@@ -375,11 +377,14 @@ class ProcessAgentRunner:
         # Parse agent result from stdout
         agent_result = self._parse_agent_output(stdout_lines, agent_type)
         
+        # Extract logs (excluding JSON output and sentinel)
+        logs = self._extract_logs_from_stdout(stdout_lines)
+        
         logger.info(f"[PROCESS-{agent_type}] Process completed with code {return_code}")
         
         return {
             "status": agent_result.get("status", "ok"),
-            "summary": agent_result.get("summary", "Agent completed"),
+            "summary": agent_result.get("summary", "Agent completed successfully"),
             "result": agent_result.get("result", {}),
             "artifacts": [],  # Will be added by caller
             "logs": logs,
@@ -411,3 +416,32 @@ class ProcessAgentRunner:
             "summary": "Agent completed successfully",
             "result": {}
         }
+    
+    def _extract_logs_from_stdout(self, stdout_lines: List[str]) -> List[str]:
+        """Extract clean logs from stdout, excluding JSON output and sentinel."""
+        logs = []
+        json_found = False
+        
+        for line in stdout_lines:
+            # Skip empty lines
+            if not line.strip():
+                continue
+            
+            # Skip sentinel line
+            if SENTINEL in line:
+                break
+            
+            # Try to detect JSON output (agent result)
+            if not json_found and line.strip().startswith('{'):
+                try:
+                    json.loads(line.strip())
+                    json_found = True
+                    continue  # Skip JSON line
+                except (json.JSONDecodeError, ValueError):
+                    pass  # Not JSON, include in logs
+            
+            # Skip lines that look like "Data collection is disabled." (common prefix)
+            # but include actual work logs
+            logs.append(line)
+        
+        return logs
