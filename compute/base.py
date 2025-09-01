@@ -16,7 +16,7 @@ class GetResponse:
     status: str
     started_at: str | None = None
     finished_at: str | None = None
-    result: str | None = None
+    result: Dict[str, Any] | None = None
 
 class BaseCompute(ABC):
     """Base interface for all compute providers."""

@@ -269,6 +269,44 @@ class Settings(BaseSettings):
         description="CPU limit for Docker agents (e.g., '0.5', '1.0', '2.0')"
     )
 
+    # Agent Runtime Configuration
+    agent_runtime: str = Field(
+        default="process",
+        alias="AGENT_RUNTIME",
+        description="Agent execution runtime: 'process' for Cloud Run (default), 'docker' for local/dev"
+    )
+    
+    # Process Agent Configuration (for Cloud Run)
+    agent_max_concurrent_per_instance: int = Field(
+        default=1,
+        alias="AGENT_MAX_CONCURRENT_PER_INSTANCE",
+        description="Maximum concurrent agent processes per container instance"
+    )
+    
+    agent_memory_limit_mb: int = Field(
+        default=2048,
+        alias="AGENT_MEMORY_LIMIT_MB",
+        description="Memory limit per agent process in megabytes (Note: Node.js needs significant virtual memory)"
+    )
+    
+    agent_timeout_sec: int = Field(
+        default=300,
+        alias="AGENT_TIMEOUT_SEC",
+        description="Agent process execution timeout in seconds"
+    )
+    
+    agent_file_size_limit_mb: int = Field(
+        default=100,
+        alias="AGENT_FILE_SIZE_LIMIT_MB",
+        description="Maximum file size per write operation in megabytes"
+    )
+    
+    agent_max_output_mb: int = Field(
+        default=10,
+        alias="AGENT_MAX_OUTPUT_MB",
+        description="Maximum output capture size for agents in megabytes"
+    )
+
     @field_validator('replicate_api_token')
     @classmethod
     def validate_replicate_token(cls, v):

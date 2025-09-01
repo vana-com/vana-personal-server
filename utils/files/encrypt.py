@@ -8,6 +8,7 @@ import os
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from coincurve import PrivateKey, PublicKey
+from .decrypt import decrypt_with_private_key
 
 
 def encrypt_with_public_key(data: bytes, public_key: str) -> str:
@@ -27,8 +28,14 @@ def encrypt_with_public_key(data: bytes, public_key: str) -> str:
         if public_key.startswith('0x'):
             public_key = public_key[2:]
         
-        # Convert public key to bytes
+        # Convert public key to bytes, handling eth_account format
         public_key_bytes = bytes.fromhex(public_key)
+        
+        # eth_account produces 64-byte public keys (raw x,y coordinates)
+        # coincurve needs 65-byte uncompressed format (04 prefix + x + y)
+        if len(public_key_bytes) == 64:
+            public_key_bytes = b'\x04' + public_key_bytes
+        
         public_key_obj = PublicKey(public_key_bytes)
         
         # Generate ephemeral private key

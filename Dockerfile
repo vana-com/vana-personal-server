@@ -1,5 +1,6 @@
 FROM python:3.12-slim-bullseye
 
+# Set the working directory early
 WORKDIR /app
 
 # Install system dependencies and Node.js for agent CLIs
@@ -14,19 +15,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Poetry for Python dependencies
 RUN pip install --no-cache-dir poetry
 
-# Copy package files for reproducible builds
-COPY package.json package-lock.json ./
-RUN npm ci --only=production
+# --- Optimized User and Permission Setup ---
+# 1. Create the user and group first
+RUN adduser --system --disabled-password --gecos '' --group appuser
 
+# 2. Copy only the necessary package definition files
+COPY package.json package-lock.json ./
 COPY pyproject.toml poetry.lock* ./
+
+# 3. Install dependencies as root (creates node_modules with correct permissions)
+RUN npm ci --only=production
 RUN poetry config virtualenvs.create false \
     && poetry install --only main --no-interaction --no-ansi
 
-COPY . .
+# 4. Copy the rest of the application source code with proper ownership
+# This is FAST because .dockerignore excludes node_modules, .git, etc.
+# Using --chown flag to set ownership during copy (no separate chown needed!)
+COPY --chown=appuser:appuser . .
 
-RUN adduser --system --disabled-password --gecos '' appuser && chown -R appuser:appuser /app
+# 5. Set PATH to include node_modules/.bin for agent CLIs
+ENV PATH="/app/node_modules/.bin:${PATH}"
+
+# 6. Switch to the non-root user for running the application
 USER appuser
 
 EXPOSE 8080
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"] 
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]

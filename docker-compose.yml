@@ -3,12 +3,14 @@ version: '3.8'
 services:
   personal-server:
     build: .
+    user: "${UID:-1000}:${GID:-1000}"
     ports:
       - "8080:8080"
     env_file:
       - .env
     environment:
       # Core configuration
+      - HOST_PROJECT_DIR=${PWD}
       - WALLET_MNEMONIC=${WALLET_MNEMONIC:-test test test test test test test test test test test junk}
       - CHAIN_ID=${CHAIN_ID:-1337}
       - RPC_URL=${RPC_URL:-http://localhost:8545}
@@ -21,7 +23,21 @@ services:
       # Replicate API token (required but not used in mock mode)
       - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN:-mock-token-for-testing}
       
-      # Agent configuration (development mode - using OAuth)
+      # Agent runtime: 'process' for Cloud Run, 'docker' for local dev (set in .env)
+      - AGENT_RUNTIME=${AGENT_RUNTIME:-process}
+      
+      # Docker agent configuration (when AGENT_RUNTIME=docker)
+      - DOCKER_AGENT_TIMEOUT_SEC=180
+      - DOCKER_AGENT_MAX_OUTPUT_MB=2
+      
+      # Process agent configuration (when AGENT_RUNTIME=process)
+      - AGENT_MAX_CONCURRENT_PER_INSTANCE=${AGENT_MAX_CONCURRENT_PER_INSTANCE:-1}
+      - AGENT_MEMORY_LIMIT_MB=${AGENT_MEMORY_LIMIT_MB:-2048}  # Node.js needs more virtual memory
+      - AGENT_TIMEOUT_SEC=180
+      - AGENT_FILE_SIZE_LIMIT_MB=100
+      - AGENT_MAX_OUTPUT_MB=2
+      
+      # Individual agent configuration (development mode - using OAuth)
       - QWEN_TIMEOUT_SEC=180
       - QWEN_MAX_STDOUT_MB=2
       - GEMINI_TIMEOUT_SEC=180
@@ -50,6 +66,10 @@ services:
       - ./:/app
       # Mount docker socket for sibling container pattern (agents run in separate containers)
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Optional: Mount loop device for hard workspace size limit
+      # First run: sudo ./setup-loop-device.sh
+      # Then uncomment the line below:
+      # - /mnt/agent-workspace:/app/.agent_workspaces
     # Grant access to Docker socket by adding container user to docker group
     # Find your Docker GID with: getent group docker | cut -d: -f3
     group_add:
@@ -86,3 +106,4 @@ networks:
 
 volumes:
   ganache-data:
+    driver: local

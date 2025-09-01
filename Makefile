@@ -23,13 +23,13 @@ build: ## Build Docker images (server and agent sandbox)
 	$(DOCKER_COMPOSE) build
 
 up: ## Start services in background
-	$(DOCKER_COMPOSE) up -d
+	@export UID=$$(id -u) GID=$$(id -g) && $(DOCKER_COMPOSE) up -d
 	@echo "Waiting for service to be healthy..."
 	@sleep 5
 	@make test-health
 
 up-verbose: ## Start services with logs
-	$(DOCKER_COMPOSE) up --build
+	@export UID=$$(id -u) GID=$$(id -g) && $(DOCKER_COMPOSE) up --build
 
 down: ## Stop and remove containers
 	$(DOCKER_COMPOSE) down
@@ -106,6 +106,9 @@ inspect: ## Inspect the Docker image
 # Quick start
 quickstart: ## Quick start: build, run, and test
 	@echo "Starting Personal Server with Agent Integration..."
+	@echo "Setting up workspace permissions..."
+	@mkdir -p .agent_workspaces
+	@chmod 755 .agent_workspaces
 	@make build
 	@make up
 	@sleep 5

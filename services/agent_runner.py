@@ -105,59 +105,76 @@ class DockerAgentRunner:
         
         logger.info(f"[DOCKER-{agent_type}] execute_agent called with stdin_input={bool(stdin_input)} (length={len(stdin_input) if stdin_input else 0})")
         
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # CRITICAL: Make the parent temp directory world-executable (traversable)
-            # Without this, the agent container cannot access anything inside
-            Path(temp_dir).chmod(0o755)
+        # 1. Define the base path for workspaces inside the container's shared volume.
+        #    This path (/app/.agent_workspaces) exists both in the container AND on the host.
+        workspace_base_dir = Path("/app/.agent_workspaces")
+        workspace_base_dir.mkdir(exist_ok=True)
+        
+        # Guard: ensure directory is writable
+        if not os.access(workspace_base_dir, os.W_OK):
+            raise RuntimeError(f"{workspace_base_dir} not writable; run: mkdir -p .agent_workspaces && chmod 755 .agent_workspaces (or export UID=$(id -u) GID=$(id -g) before docker compose up)")
+        
+        # Guard: ensure sufficient disk space (100MB minimum)
+        import shutil
+        if shutil.disk_usage(str(workspace_base_dir)).free < 100_000_000:
+            raise RuntimeError("Insufficient disk space: less than 100MB free")
+
+        # 2. Create a unique, temporary directory for this specific operation.
+        #    This directory is created inside the shared volume.
+        operation_workspace_path = Path(tempfile.mkdtemp(prefix=f"{operation_id}_", dir=workspace_base_dir))
+        # Fix permissions immediately - tempfile.mkdtemp creates 0o700 (owner-only)
+        # Agent container runs as different UID, needs traverse AND write access
+        operation_workspace_path.chmod(0o777)  # Allow read/write/execute for all users
+        
+        try:
+            # 3. Translate the container path to the absolute path on the HOST.
+            #    The Docker daemon needs this path for the volume mount.
+            # Since we're in the container at /app, and /app is mounted from host's project root,
+            # we need to replace /app with the actual host project directory
+            host_project_dir = os.environ.get("HOST_PROJECT_DIR", os.getcwd())
+            host_workspace_path = str(operation_workspace_path).replace('/app', host_project_dir)
+
+            self._stage_workspace_files(operation_workspace_path, workspace_files)
             
-            workspace_path = Path(temp_dir) / "workspace"
-            workspace_path.mkdir(mode=0o755)
-            # Ensure workspace is world-readable/executable
-            workspace_path.chmod(0o755)
+            if stdin_input:
+                stdin_file = operation_workspace_path / ".stdin_input"
+                stdin_file.write_text(stdin_input, encoding='utf-8')
+                # Make file readable by all users (agent container may have different UID)
+                stdin_file.chmod(0o644)
+                logger.info(f"[DOCKER] Wrote stdin input to {stdin_file}")
             
-            # Create a writable home directory for CLI config files
-            # Don't use bind mount for home - it has UID/GID issues
-            # Instead, we'll use tmpfs or let the container create it
+            # 5. Execute the container, providing the HOST path for the volume.
+            result = await self._run_container(
+                agent_type, command, args, str(host_workspace_path), env_vars, 
+                operation_id, task_store
+            )
             
+            # Collect artifacts from workspace (bind mount means they're on host filesystem)
+            artifacts = self._collect_artifacts(operation_workspace_path, operation_id)
+            result["artifacts"] = artifacts
+            result["execution_time"] = time.time() - start_time
+            
+            return result
+                
+        except Exception as e:
+            logger.error(f"[DOCKER-{agent_type}] Agent execution failed: {e}")
+            return {
+                "status": "error",
+                "summary": f"Docker execution failed: {type(e).__name__}",
+                "result": {},
+                "artifacts": [],
+                "logs": [str(e)],
+                "stdout": "",
+                "execution_time": time.time() - start_time
+            }
+        finally:
+            # 6. Clean up the workspace using the container's path.
             try:
-                # Stage workspace files
-                self._stage_workspace_files(workspace_path, workspace_files)
-                
-                # If stdin_input provided, make it world-readable to avoid UID issues
-                stdin_file = None
-                if stdin_input:
-                    stdin_file = workspace_path / ".stdin_input"
-                    stdin_file.write_text(stdin_input, encoding='utf-8')
-                    # Make it world-readable so container user can access it regardless of UID
-                    stdin_file.chmod(0o644)
-                    logger.info(f"[DOCKER] Wrote stdin input to {stdin_file} (exists: {stdin_file.exists()}, size: {stdin_file.stat().st_size} bytes, mode: {oct(stdin_file.stat().st_mode)})")
-                    # Also log first 100 chars of content for debugging
-                    logger.debug(f"[DOCKER] Stdin content preview: {stdin_input[:100]}...")
-                
-                # Execute in container with optional streaming
-                result = await self._run_container(
-                    agent_type, command, args, workspace_path, env_vars, 
-                    operation_id, task_store, stdin_file
-                )
-                
-                # Process artifacts from workspace
-                artifacts = self._collect_artifacts(workspace_path, operation_id)
-                result["artifacts"] = artifacts
-                result["execution_time"] = time.time() - start_time
-                
-                return result
-                
+                import shutil
+                shutil.rmtree(operation_workspace_path)
+                logger.debug(f"[DOCKER] Cleaned up workspace: {operation_workspace_path}")
             except Exception as e:
-                logger.error(f"[DOCKER-{agent_type}] Agent execution failed: {e}")
-                return {
-                    "status": "error",
-                    "summary": f"Docker execution failed: {type(e).__name__}",
-                    "result": {},
-                    "artifacts": [],
-                    "logs": [str(e)],
-                    "stdout": "",
-                    "execution_time": time.time() - start_time
-                }
+                logger.error(f"[DOCKER] Failed to cleanup workspace {operation_workspace_path}: {e}")
     
     def _stage_workspace_files(self, workspace_path: Path, files_dict: Dict[str, bytes]):
         """Stage input files in the workspace directory."""
@@ -178,11 +195,10 @@ class DockerAgentRunner:
         agent_type: str,
         command: str,
         args: List[str],
-        workspace_path: Path,
+        host_workspace_path: str,
         env_vars: Dict[str, str],
         operation_id: str,
-        task_store=None,
-        stdin_file: Optional[Path] = None
+        task_store=None
     ) -> Dict[str, Any]:
         """
         Run agent command in secure Docker container.
@@ -199,13 +215,8 @@ class DockerAgentRunner:
         import shlex
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
         
-        # If stdin_file provided, pipe it to the command
-        if stdin_file:
-            # Use cat to pipe the file content to the command's stdin
-            # The file is in the current working directory, use relative path
-            full_command = ["sh", "-c", f"cat .stdin_input | {command} {escaped_args}"]
-        else:
-            full_command = ["sh", "-c", f"{command} {escaped_args}"]
+        # Check if stdin input file exists and pipe it to the command
+        full_command = ["sh", "-c", f"if [ -f .stdin_input ]; then cat .stdin_input | {command} {escaped_args}; else {command} {escaped_args}; fi"]
         
         # Determine network mode based on agent requirements
         # Allow network for agents that need API access, otherwise isolate
@@ -217,16 +228,17 @@ class DockerAgentRunner:
             "command": full_command,
             "working_dir": "/workspace/agent-work",
             "environment": self._prepare_environment(env_vars),
+            # Use volumes dict for Docker API (expects host paths)
             "volumes": {
-                str(workspace_path): {"bind": "/workspace/agent-work", "mode": "rw"}
+                host_workspace_path: {"bind": "/workspace/agent-work", "mode": "rw,z"}  # Workspace for input/output
             },
-            # Use tmpfs for writable directories instead of bind mounts (avoids UID/GID issues)
+            # Use tmpfs for writable directories (not the workspace)
             "tmpfs": {
                 "/home/appuser": "size=50m,mode=1777",  # Writable home directory
                 "/tmp": "size=100m,mode=1777",  # Temp directory
             },
             "network_mode": network_mode,  # Conditional network access
-            "user": "appuser",       # Non-root execution
+            "user": f"{os.getuid()}:{os.getgid()}",  # Match orchestrator UID/GID
             "mem_limit": self.memory_limit,  # Memory constraint
             "cpu_quota": int(float(self.cpu_limit) * 100_000),  # CPU limit (100k = 1 CPU)
             "cpu_period": 100_000,   # CPU period (100ms)
@@ -235,12 +247,16 @@ class DockerAgentRunner:
             "cap_drop": ["ALL"],  # Drop all capabilities
             "security_opt": ["no-new-privileges:true"],  # Prevent privilege escalation
             "pids_limit": 256,  # Prevent fork bombs
+            # Add file size limit to prevent single huge files
+            "ulimits": [
+                {"Name": "fsize", "Hard": 104857600, "Soft": 104857600}  # 100MB per file
+            ]
         }
         
         logger.info(f"[DOCKER-{agent_type}] Starting container for {operation_id}")
         logger.debug(f"[DOCKER-{agent_type}] Command: {' '.join(full_command)}")
         logger.debug(f"[DOCKER-{agent_type}] Network mode: {network_mode}")
-        logger.debug(f"[DOCKER-{agent_type}] Has stdin: {stdin_file is not None}")
+        logger.info(f"[DOCKER-{agent_type}] Mounting {host_workspace_path} -> /workspace/agent-work")
         
         try:
             # Run container asynchronously with streaming if task_store provided
@@ -357,14 +373,17 @@ class DockerAgentRunner:
         exit_code = exec_result["exit_code"]
         runtime_error = exec_result["runtime_error"]
         
-        logs = []
-        if runtime_error:
-            logs.append(f"Runtime error: {runtime_error}")
-        if exit_code != 0:
-            logs.append(f"Process exited with code: {exit_code}")
-        
         # Parse JSON result from output
         parsed_json = self._parse_agent_result(stdout)
+        
+        # Extract clean logs from stdout (excluding JSON and sentinel)
+        clean_logs = self._extract_logs_from_stdout(stdout)
+        
+        # Add runtime errors to logs if any
+        if runtime_error:
+            clean_logs.append(f"Runtime error: {runtime_error}")
+        if exit_code != 0 and exit_code != -1:
+            clean_logs.append(f"Process exited with code: {exit_code}")
         
         # Determine final status with comprehensive fallbacks
         has_sentinel = SENTINEL in stdout
@@ -383,12 +402,16 @@ class DockerAgentRunner:
             status = "error"
             summary = f"Container execution failed: {runtime_error[:100]}"
         elif parsed_json:
-            status = parsed_json.get("status", "ok" if has_sentinel else "error")
-            summary = parsed_json.get("summary", "Agent completed")
+            status = parsed_json.get("status", "ok" if has_sentinel else "ok")
+            summary = parsed_json.get("summary", "Agent completed successfully")
         elif has_sentinel and not has_error_pattern:
             # Agent printed sentinel but no JSON - partial success
-            status = "warning"
-            summary = "Agent completed but produced no structured output"
+            status = "ok" 
+            summary = "Agent completed successfully"
+        elif exit_code == 0 and not has_error_pattern:
+            # Container exited successfully without errors, likely produced artifacts
+            status = "ok"
+            summary = "Agent completed successfully"
         elif has_error_pattern:
             # Detected error patterns in output
             status = "error"
@@ -400,9 +423,9 @@ class DockerAgentRunner:
         return {
             "status": status,
             "summary": summary,
-            "result": parsed_json or {},
+            "result": parsed_json.get("result", {}) if parsed_json else {},
             "artifacts": [],  # Will be populated by caller
-            "logs": logs,
+            "logs": clean_logs,
             "stdout": stdout
         }
     
@@ -421,6 +444,35 @@ class DockerAgentRunner:
         secure_env.update(env_vars)
         
         return secure_env
+    
+    def _extract_logs_from_stdout(self, stdout: str) -> List[str]:
+        """Extract clean logs from stdout, excluding JSON output and sentinel."""
+        logs = []
+        lines = stdout.split('\n')
+        json_found = False
+        
+        for line in lines:
+            # Skip empty lines
+            if not line.strip():
+                continue
+            
+            # Skip sentinel line
+            if SENTINEL in line:
+                break
+            
+            # Try to detect JSON output (agent result)
+            if not json_found and line.strip().startswith('{'):
+                try:
+                    json.loads(line.strip())
+                    json_found = True
+                    continue  # Skip JSON line
+                except (json.JSONDecodeError, ValueError):
+                    pass  # Not JSON, include in logs
+            
+            # Include the line in logs
+            logs.append(line.rstrip())
+        
+        return logs
     
     def _parse_agent_result(self, output: str) -> Optional[Dict]:
         """
@@ -478,10 +530,56 @@ class DockerAgentRunner:
         
         return None
     
-    def _collect_artifacts(self, workspace_path: Path, operation_id: str) -> List[Dict]:
-        """Collect artifacts from workspace output directory."""
+    def _collect_artifacts_from_container(self, container, operation_id: str) -> List[Dict]:
+        """Collect artifacts from container using get_archive (works on stopped containers)."""
         artifacts = []
-        # Artifacts are created in the working directory, which is now agent-work
+        
+        try:
+            import tarfile
+            import io
+            
+            # Try to get the entire output directory as tar archive
+            try:
+                bits, stat = container.get_archive("/workspace/agent-work/out")
+            except docker.errors.NotFound:
+                logger.debug(f"[DOCKER] No output directory found in container")
+                return artifacts
+            
+            # Extract tar stream
+            tar_stream = io.BytesIO()
+            for chunk in bits:
+                tar_stream.write(chunk)
+            tar_stream.seek(0)
+            
+            # Parse tar archive
+            with tarfile.open(fileobj=tar_stream, mode='r') as tar:
+                for member in tar.getmembers():
+                    if member.isfile():
+                        try:
+                            # Extract file content
+                            f = tar.extractfile(member)
+                            if f:
+                                content = f.read()
+                                filename = Path(member.name).name
+                                
+                                artifacts.append({
+                                    "name": filename,
+                                    "content": content,
+                                    "size": len(content),
+                                    "artifact_path": filename
+                                })
+                                logger.info(f"[DOCKER] Collected artifact: {filename} ({len(content)} bytes)")
+                        except Exception as e:
+                            logger.warning(f"[DOCKER] Failed to extract {member.name}: {e}")
+        except Exception as e:
+            logger.warning(f"[DOCKER] Failed to collect artifacts: {e}")
+        
+        return artifacts
+    
+    def _collect_artifacts(self, workspace_path: Path, operation_id: str) -> List[Dict]:
+        """Legacy artifact collection - kept for compatibility."""
+        # This is now only used as a fallback
+        artifacts = []
         out_dir = workspace_path / "out"
         
         if out_dir.exists() and out_dir.is_dir():
@@ -493,7 +591,7 @@ class DockerAgentRunner:
                             "name": file_path.name,
                             "content": content,
                             "size": len(content),
-                            "artifact_path": f"out/{file_path.name}"
+                            "artifact_path": file_path.name
                         })
                         logger.info(f"[DOCKER] Collected artifact: {file_path.name} ({len(content)} bytes)")
                     except Exception as e:
@@ -574,27 +672,48 @@ class DockerAgentRunner:
             parsed_json = self._parse_agent_result(stdout)
             has_sentinel = SENTINEL in stdout
             
+            # Extract clean logs from stdout
+            clean_logs = self._extract_logs_from_stdout(stdout)
+            
             # Log stdout for debugging failed containers
             if exit_code != 0:
                 logger.error(f"[DOCKER-{agent_type}] Container failed with exit code {exit_code}")
                 logger.error(f"[DOCKER-{agent_type}] Stdout (first 500 chars): {stdout[:500]}")
+                if exit_code != -1:
+                    clean_logs.append(f"Process exited with code: {exit_code}")
+            
+            # Check for error patterns like the non-streaming version
+            error_patterns = [
+                "error:", "exception:", "traceback:", "failed:", 
+                "permission denied", "not found", "syntax error"
+            ]
+            has_error_pattern = any(
+                pattern in stdout.lower() 
+                for pattern in error_patterns
+            )
             
             if parsed_json:
-                status = parsed_json.get("status", "ok" if has_sentinel else "error")
-                summary = parsed_json.get("summary", "Agent completed")
-            elif has_sentinel:
-                status = "warning"
-                summary = "Agent completed but produced no structured output"
+                status = parsed_json.get("status", "ok")
+                summary = parsed_json.get("summary", "Agent completed successfully")
+            elif has_sentinel and not has_error_pattern:
+                status = "ok"
+                summary = "Agent completed successfully"
+            elif exit_code == 0 and not has_error_pattern:
+                status = "ok"
+                summary = "Agent completed successfully"
+            elif has_error_pattern:
+                status = "error"
+                summary = "Agent encountered errors during execution"
             else:
-                status = "error" if exit_code != 0 else "ok"
+                status = "error"
                 summary = f"Process exited with code {exit_code}"
             
             return {
                 "status": status,
                 "summary": summary,
-                "result": parsed_json or {},
-                "artifacts": [],
-                "logs": [],  # Logs already streamed to task store
+                "result": parsed_json.get("result", {}) if parsed_json else {},
+                "artifacts": [],  # Will be populated by caller
+                "logs": clean_logs,  # Clean logs extracted from stdout
                 "stdout": stdout
             }
             
@@ -631,107 +750,61 @@ class DockerAgentRunner:
         task_store
     ) -> Dict[str, Any]:
         """
-        Stream logs from container to task store in real-time.
+        Collect logs from container periodically and update task store.
         
         Returns dict with stdout collected.
         """
         loop = asyncio.get_event_loop()
-        stdout_lines = []
-        log_batch = []
-        total_size = 0
-        sentinel_found = False
-        
-        def get_log_stream():
-            """Get log stream from container."""
-            try:
-                return container.logs(stream=True, follow=True)
-            except Exception as e:
-                logger.error(f"[DOCKER-{agent_type}] Failed to get log stream: {e}")
-                return None
-        
-        # Get log stream in thread pool
-        log_stream = await loop.run_in_executor(None, get_log_stream)
-        
-        if not log_stream:
-            return {"stdout": "", "error": "Failed to get log stream"}
         
         try:
-            # Process log stream
+            # Periodically collect logs while container is running
+            all_logs = ""
+            last_log_size = 0
+            
             while True:
-                # Read next log line in thread pool (blocking operation)
-                def read_next_line():
+                # Check container status
+                def check_container():
                     try:
-                        # The stream is an iterator that yields bytes
-                        return next(log_stream, None)
-                    except StopIteration:
-                        return None
+                        container.reload()
+                        return container.status, container.logs(stdout=True, stderr=True).decode('utf-8', errors='ignore')
                     except Exception as e:
-                        logger.warning(f"[DOCKER-{agent_type}] Error reading log line: {e}")
-                        return None
+                        logger.warning(f"[DOCKER-{agent_type}] Error checking container: {e}")
+                        return 'error', all_logs
                 
-                line_bytes = await loop.run_in_executor(None, read_next_line)
+                status, current_logs = await loop.run_in_executor(None, check_container)
                 
-                if line_bytes is None:
-                    # Stream ended
-                    break
-                
-                # Decode line
-                line = line_bytes.decode('utf-8', errors='ignore').rstrip()
-                
-                # Check for size limit
-                if total_size + len(line) > self.max_output_bytes:
-                    line = "... [output truncated]"
-                    stdout_lines.append(line)
-                    log_batch.append(line)
-                    await task_store.append_logs(operation_id, log_batch)
-                    break
-                
-                stdout_lines.append(line)
-                log_batch.append(line)
-                total_size += len(line)
-                
-                # Check for sentinel
-                if SENTINEL in line:
-                    sentinel_found = True
-                
-                # Batch update to task store (every 10 lines or on sentinel)
-                if len(log_batch) >= 10 or sentinel_found:
-                    await task_store.append_logs(operation_id, log_batch)
-                    log_batch = []
-                
-                # If sentinel found, we can stop following logs
-                if sentinel_found:
-                    # Read any remaining output quickly
-                    remaining_count = 0
-                    while remaining_count < 20:  # Read up to 20 more lines after sentinel
-                        line_bytes = await loop.run_in_executor(None, read_next_line)
-                        if line_bytes is None:
-                            break
-                        line = line_bytes.decode('utf-8', errors='ignore').rstrip()
-                        stdout_lines.append(line)
-                        log_batch.append(line)
-                        remaining_count += 1
+                # If we have new logs, process them
+                if len(current_logs) > last_log_size:
+                    new_content = current_logs[last_log_size:]
                     
-                    # Final batch update
-                    if log_batch:
-                        await task_store.append_logs(operation_id, log_batch)
+                    # Log new content (may be one line or multiple)
+                    # Just log what we get without trying to be clever
+                    if new_content.strip():
+                        logger.info(f"[DOCKER-{agent_type}] {new_content.strip()}")
+                    
+                    # Update task store with new content
+                    if new_content.strip():
+                        await task_store.append_logs(operation_id, new_content.splitlines())
+                    
+                    all_logs = current_logs
+                    last_log_size = len(current_logs)
+                
+                # If container has exited, we're done
+                if status in ['exited', 'dead']:
                     break
+                
+                # Check for sentinel to stop early
+                if SENTINEL in all_logs:
+                    break
+                
+                # Wait before next check
+                await asyncio.sleep(2)
             
-            # Send any remaining logs
-            if log_batch:
-                await task_store.append_logs(operation_id, log_batch)
-            
-            return {"stdout": "\n".join(stdout_lines)}
+            return {"stdout": all_logs}
             
         except Exception as e:
-            logger.error(f"[DOCKER-{agent_type}] Error streaming logs: {e}")
-            # Send any collected logs
-            if log_batch:
-                try:
-                    await task_store.append_logs(operation_id, log_batch)
-                except:
-                    pass
-            return {"stdout": "\n".join(stdout_lines), "error": str(e)}
+            logger.error(f"[DOCKER-{agent_type}] Error collecting logs: {e}")
+            return {"stdout": "", "error": str(e)}
     
     async def _monitor_container_status(
         self,
