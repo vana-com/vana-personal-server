@@ -7,6 +7,7 @@ on:
       - main
       - 'test/**'
       - 'devtest/**'
+      - 'feat/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -42,7 +43,7 @@ jobs:
             echo "environment=development" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "environment=production" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" =~ ^refs/heads/(test|devtest)/.* ]]; then
+          elif [[ "${{ github.ref }}" =~ ^refs/heads/(test|devtest|feat)/.* ]]; then
             echo "environment=test" >> $GITHUB_OUTPUT
           else
             echo "environment=test" >> $GITHUB_OUTPUT
