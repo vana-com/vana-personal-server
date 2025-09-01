@@ -303,8 +303,8 @@ class ArtifactStorageService:
             return decrypted_content
             
         except Exception as e:
-            logger.error(f"Failed to get artifact {operation_id}/{artifact_path}: {e}")
-            return None
+            logger.error(f"Failed to get artifact {operation_id}/{artifact_path}: {e}", exc_info=True)
+            raise  # Re-raise the exception so we can see it in the API response
     
     async def store_artifact(
         self,
