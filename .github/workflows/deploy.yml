@@ -141,7 +141,7 @@ jobs:
             --timeout=60 \
             --concurrency=100 \
             --set-env-vars="CHAIN_ID=${{ matrix.environment == 'production' && '1480' || '14800' }}" \
-            --set-secrets="WALLET_MNEMONIC=WALLET_MNEMONIC:latest,REPLICATE_API_TOKEN=REPLICATE_API_TOKEN:latest"
+            --set-secrets="WALLET_MNEMONIC=WALLET_MNEMONIC:latest,REPLICATE_API_TOKEN=REPLICATE_API_TOKEN:latest,QWEN_API_KEY=QWEN_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
           
           # Get the service URL
           URL=$(gcloud run services describe ${SERVICE_NAME} \
