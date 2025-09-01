@@ -29,6 +29,10 @@ RUN poetry config virtualenvs.create false \
     && poetry install --only main --no-interaction --no-ansi
 
 # 4. Copy the rest of the application source code with proper ownership
+# Cache invalidation: This ARG changes with each commit, ensuring fresh code
+ARG COMMIT_SHA=unknown
+RUN echo "Building commit: ${COMMIT_SHA}"
+
 # This is FAST because .dockerignore excludes node_modules, .git, etc.
 # Using --chown flag to set ownership during copy (no separate chown needed!)
 COPY --chown=appuser:appuser . .

@@ -83,9 +83,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Registry cache is more reliable than GHA cache for production
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ steps.env.outputs.environment == 'production' && 'corsali-production' || 'corsali-development' }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ steps.env.outputs.environment == 'production' && 'corsali-production' || 'corsali-development' }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
           platforms: linux/amd64
+          build-args: |
+            COMMIT_SHA=${{ github.sha }}
 
   deploy:
     needs: build
