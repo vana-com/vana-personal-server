@@ -20,6 +20,7 @@ on:
 
 env:
   DOCKER_REGISTRY: europe-west1-docker.pkg.dev
+  REPOSITORY_NAME: cloud-run-source-deploy
   IMAGE_NAME: vana-personal-server
 
 jobs:
@@ -30,7 +31,7 @@ jobs:
       image-digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Determine environment
         id: env
@@ -48,7 +49,7 @@ jobs:
           fi
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3.7.1
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -64,10 +65,10 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v5.5.1
         with:
           images: |
-            ${{ env.DOCKER_REGISTRY }}/${{ steps.env.outputs.environment == 'production' && 'corsali-production' || 'corsali-development' }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}
+            ${{ env.DOCKER_REGISTRY }}/${{ steps.env.outputs.environment == 'production' && 'corsali-production' || 'corsali-development' }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
@@ -75,7 +76,7 @@ jobs:
 
       - name: Build and push Docker image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -96,7 +97,7 @@ jobs:
       url: ${{ steps.deploy.outputs.url }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -122,7 +123,7 @@ jobs:
           fi
           
           REGION="europe-west1"
-          IMAGE="${{ env.DOCKER_REGISTRY }}/${PROJECT_ID}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}"
+          IMAGE="${{ env.DOCKER_REGISTRY }}/${PROJECT_ID}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}"
           
           # Deploy with proper resource allocation
           gcloud run deploy ${SERVICE_NAME} \
