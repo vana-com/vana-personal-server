@@ -1,0 +1,27 @@
+# Test Environment Configuration
+# This environment is for testing the GitHub Actions deployment workflow
+# Uses corsali-development project but deploys to a separate service
+
+environment: test
+gcp:
+  project_id: corsali-development
+  region: europe-west1
+  service_name: vana-personal-server-test  # Different service to avoid conflicts
+  
+resources:
+  memory: 1Gi
+  cpu: 1
+  min_instances: 0
+  max_instances: 3
+  
+environment_variables:
+  CHAIN_ID: "14800"  # Testnet chain ID
+  
+secrets:
+  - WALLET_MNEMONIC
+  - REPLICATE_API_TOKEN
+  
+notes:
+  - Triggered by pushes to test/** or devtest/** branches
+  - Uses same GCP project as development but different Cloud Run service
+  - Allows testing workflow changes without affecting main development environment
