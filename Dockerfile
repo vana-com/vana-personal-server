@@ -43,12 +43,7 @@ COPY --chown=appuser:appuser . .
 RUN poetry install --only main --no-interaction --no-ansi
 
 # 6. Build-time sanity check: Verify SUPPORTED_OPERATIONS contains agent operations
-RUN python -c "from grants.validate import SUPPORTED_OPERATIONS; \
-    expected = {'prompt_gemini_agent', 'prompt_qwen_agent'}; \
-    if not expected.issubset(SUPPORTED_OPERATIONS): \
-        missing = expected - SUPPORTED_OPERATIONS; \
-        raise AssertionError(f'Missing operations in SUPPORTED_OPERATIONS: {missing}'); \
-    print(f'✓ SUPPORTED_OPERATIONS verified: {SUPPORTED_OPERATIONS}')"
+RUN python -c "from grants.validate import SUPPORTED_OPERATIONS; expected = {'prompt_gemini_agent', 'prompt_qwen_agent'}; assert expected.issubset(SUPPORTED_OPERATIONS), f'Missing operations: {expected - SUPPORTED_OPERATIONS}'; print(f'✓ SUPPORTED_OPERATIONS verified: {SUPPORTED_OPERATIONS}')"
 
 # 7. Set PATH to include node_modules/.bin for agent CLIs
 ENV PATH="/app/node_modules/.bin:${PATH}"
