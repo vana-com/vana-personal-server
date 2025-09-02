@@ -6,6 +6,7 @@ Based on the original crypto_service.py but stripped down for the key derivation
 import logging
 from typing import NamedTuple
 from eth_account import Account
+import eth_keys as keys
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,9 @@ def derive_ethereum_keys(
         acct = Account.from_mnemonic(mnemonic, account_path=derivation_path)
 
         private_key_hex = acct.key.hex()
-        public_key_hex = acct._key_obj.public_key.to_hex()
+        # Convert to eth_keys PublicKey to get uncompressed format (130 chars: 0x + 128 hex chars)
+        public_key_bytes = acct._key_obj.public_key.to_bytes()
+        public_key_hex = keys.PublicKey(public_key_bytes).to_hex()
         address = acct.address
 
         return CryptoKeys(
