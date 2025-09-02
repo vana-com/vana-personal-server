@@ -33,6 +33,9 @@ def derive_ethereum_keys(
 ) -> CryptoKeys:
     """
     Derive Ethereum keys for DLP using BIP44 standard.
+    
+    Returns public key in SEC1 uncompressed format (65 bytes with 0x04 prefix)
+    for compatibility with Vana SDK.
 
     Args:
         mnemonic: BIP39 mnemonic phrase
@@ -60,8 +63,14 @@ def derive_ethereum_keys(
         # Generate account from mnemonic and derivation path
         acct = Account.from_mnemonic(mnemonic, account_path=derivation_path)
 
-        private_key_hex = acct.key.hex()
-        public_key_hex = acct._key_obj.public_key.to_hex()
+        # Ensure private key has 0x prefix for consistency
+        private_key_hex = "0x" + acct.key.hex()
+        
+        # Get uncompressed SEC1 format (65 bytes with 0x04 prefix)
+        # This is what Vana SDK expects
+        public_key_raw = acct._key_obj.public_key.to_bytes()
+        public_key_hex = "0x04" + public_key_raw.hex()
+        
         address = acct.address
 
         return CryptoKeys(
