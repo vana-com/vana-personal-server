@@ -6,7 +6,7 @@ Based on the original crypto_service.py but stripped down for the key derivation
 import logging
 from typing import NamedTuple
 from eth_account import Account
-import eth_keys as keys
+import eth_keys.datatypes as keys
 
 logger = logging.getLogger(__name__)
 
