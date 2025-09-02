@@ -279,7 +279,13 @@ class ArtifactStorageService:
             # Handle legacy format (base64) during transition
             if "encrypted_key" in metadata:
                 # New secure format - decrypt with ECIES
-                encryption_key = self._decrypt_key_for_grantee(encrypted_key_hex, grantee_address)
+                logger.info(f"Attempting ECIES decryption for operation {operation_id}")
+                try:
+                    encryption_key = self._decrypt_key_for_grantee(encrypted_key_hex, grantee_address)
+                    logger.info(f"ECIES decryption successful, key length: {len(encryption_key)}")
+                except Exception as e:
+                    logger.error(f"ECIES decryption failed: {e}", exc_info=True)
+                    raise
             else:
                 # Legacy format - base64 decoding (will be removed)
                 logger.warning(f"Using legacy encryption format for operation {operation_id}")
