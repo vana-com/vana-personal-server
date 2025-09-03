@@ -8,8 +8,11 @@ def validate_ethereum_address(value: str) -> str:
     return value
 
 def validate_public_key(value: str) -> str:
-    if not re.match(r'^0x[a-fA-F0-9]{128}$', value):
-        raise ValueError('Invalid public key format')
+    # Ethereum public keys can be:
+    # - Uncompressed: 65 bytes (130 hex chars including 0x) - starts with 0x04
+    # - Compressed: 33 bytes (66 hex chars including 0x) - starts with 0x02 or 0x03
+    if not re.match(r'^0x[a-fA-F0-9]{64}$|^0x[a-fA-F0-9]{130}$', value):
+        raise ValueError('Invalid public key format - must be exactly 64 or 130 hex characters')
     return value
 
 EthereumAddress = Annotated[str, BeforeValidator(validate_ethereum_address)]
