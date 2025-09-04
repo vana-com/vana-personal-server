@@ -87,7 +87,12 @@ def encrypt_symmetric_key_for_server(symmetric_key: bytes, server_public_key: st
     Returns:
         Encrypted symmetric key as hex string
     """
-    return encrypt_with_public_key(symmetric_key, server_public_key)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Encrypting symmetric key, input length: {len(symmetric_key)}, first 10 bytes: {symmetric_key[:10]}, type: {type(symmetric_key)}")
+    result = encrypt_with_public_key(symmetric_key, server_public_key)
+    logger.info(f"Encrypted symmetric key to hex string of length: {len(result)}")
+    return result
 
 
 def decrypt_symmetric_key_with_server(encrypted_key_hex: str, server_private_key: str) -> bytes:
@@ -102,6 +107,15 @@ def decrypt_symmetric_key_with_server(encrypted_key_hex: str, server_private_key
     Returns:
         The decrypted symmetric key as bytes
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Decrypting symmetric key, encrypted hex length: {len(encrypted_key_hex)}")
+    
     # Use existing decrypt function
     decrypted_str = decrypt_with_private_key(encrypted_key_hex, server_private_key)
-    return decrypted_str.encode('utf-8')  # Convert back to bytes for Fernet
+    logger.info(f"Decrypted to string, length: {len(decrypted_str)}, first 10 chars: {decrypted_str[:10]}")
+    
+    # Convert back to bytes for Fernet
+    result = decrypted_str.encode('utf-8')  
+    logger.info(f"Returning bytes, length: {len(result)}, first 10 bytes: {result[:10]}, type: {type(result)}")
+    return result

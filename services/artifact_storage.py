@@ -163,6 +163,7 @@ class ArtifactStorageService:
         
         # Generate encryption key for this operation
         encryption_key = self._generate_encryption_key()
+        logger.info(f"Generated Fernet key for operation {operation_id}, key length: {len(encryption_key)}, first 10 chars: {encryption_key[:10]}")
         
         stored_artifacts = []
         total_size = 0
@@ -285,7 +286,7 @@ class ArtifactStorageService:
                 logger.info(f"Attempting ECIES decryption for operation {operation_id} using grantor {grantor_address}")
                 try:
                     encryption_key = self._decrypt_key_for_grantee(encrypted_key_hex, grantor_address)
-                    logger.info(f"ECIES decryption successful, key length: {len(encryption_key)}")
+                    logger.info(f"ECIES decryption successful, key length: {len(encryption_key)}, first 10 chars: {encryption_key[:10]}, type: {type(encryption_key)}")
                 except Exception as e:
                     logger.error(f"ECIES decryption failed: {e}", exc_info=True)
                     raise
