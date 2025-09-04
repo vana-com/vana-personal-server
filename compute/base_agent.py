@@ -342,16 +342,18 @@ class BaseAgentProvider(BaseCompute, ABC):
         # Docker runner already collected artifacts and included them in result
         artifacts = result.get("artifacts", [])
         
+        # Collect all artifacts to store in a single batch
+        artifacts_to_store = []
+        
         for artifact in artifacts:
             content = artifact.get("content")
             filename = artifact.get("name")
             
             if content and filename:
-                # Store in artifact storage using both addresses
-                # Use grantor for encryption (data owner) and grantee for access control
-                await self.artifact_storage.store_artifact(
-                    operation_id, filename, content, context.grantor, context.grantee
-                )
+                artifacts_to_store.append({
+                    "name": filename,
+                    "content": content
+                })
                 
                 # Add metadata for result
                 artifacts_metadata.append({
@@ -359,5 +361,14 @@ class BaseAgentProvider(BaseCompute, ABC):
                     "size": artifact.get("size", len(content)),
                     "artifact_path": filename
                 })
+        
+        # Store all artifacts at once with a single encryption key
+        if artifacts_to_store:
+            await self.artifact_storage.store_artifacts(
+                operation_id=operation_id,
+                artifacts=artifacts_to_store,
+                grantor_address=context.grantor,
+                grantee_address=context.grantee
+            )
         
         return artifacts_metadata
