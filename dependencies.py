@@ -37,9 +37,14 @@ def get_chain_dependency(settings: Annotated[Settings, Depends(get_settings_depe
 # Operations service dependency
 def get_operations_service(
     compute: Annotated[BaseCompute, Depends(get_compute_provider)],
-    chain: Annotated[Chain, Depends(get_chain_dependency)]
+    chain: Annotated[Chain, Depends(get_chain_dependency)],
+    settings: Annotated[Settings, Depends(get_settings_dependency)]
 ) -> OperationsService:
     """Get operations service instance."""
+    # Use mock service if in mock mode
+    if settings.mock_mode:
+        from services.mock_operations import MockOperationsService
+        return MockOperationsService()
     return OperationsService(compute, chain)
 
 

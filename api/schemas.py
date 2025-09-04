@@ -46,10 +46,16 @@ class GetOperationResponse(BaseModel):
     status: str
     started_at: str | None = None
     finished_at: str | None = None
-    result: str | None = None
+    result: dict | None = None  # Changed from str to dict for proper JSON structure
 
 class ErrorResponse(BaseModel):
     kind: str = Field(default="Error", description="Resource type identifier")
     detail: str
     error_code: str
     field: str | None = None
+
+class ArtifactDownloadRequest(BaseModel):
+    """Request model for authenticated artifact downloads."""
+    operation_id: str
+    artifact_path: str
+    signature: str  # Ethereum signature of the request

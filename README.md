@@ -49,9 +49,13 @@ The server will be available at `http://localhost:8000` with automatic OpenAPI d
 
 ### Docker Setup
 
-1. **Build the Docker image:**
+1. **Build the Docker images:**
 ```bash
+# Build main server image
 docker build -t vana-personal-server .
+
+# Build agent sandbox image (required for agent operations)
+./build-agent-image.sh
 ```
 
 2. **Run with Docker:**
@@ -66,7 +70,7 @@ docker run -p 8080:8080 \
 
 The server will be available at `http://localhost:8080`.
 
-3. **Using Docker Compose (optional):**
+3. **Using Docker Compose (recommended for agent support):**
 ```bash
 # Create docker-compose.yml with your environment variables
 docker-compose up -d

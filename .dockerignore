@@ -1,11 +1,24 @@
+# Python cache
 __pycache__
 *.pyc
 *.pyo
 *.pyd
 .Python
+venv
 env
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Node.js - CRITICAL for build speed!
+node_modules/
+
+# IDE and AI assistant files
+.idea/
+.vscode/
+.claude/
+.devcontainer/
+
+# Testing artifacts
 .tox
 .coverage
 .coverage.*
@@ -14,15 +27,28 @@ nosetests.xml
 coverage.xml
 *.cover
 *.log
-.git
 .mypy_cache
 .pytest_cache
 .hypothesis
+htmlcov
+
+# Git
+.git
+.gitignore
+
+# OS-specific
 .DS_Store
 *.swp
 *.swo
 *~
+
+# Misc
 requirements.txt
-.pytest_cache
-.coverage
-htmlcov 
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Archive
+archived/ 

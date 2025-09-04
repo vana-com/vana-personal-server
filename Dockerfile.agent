@@ -1,0 +1,64 @@
+# Agent Sandbox Dockerfile - Secure container for AI agent execution
+# Implements "Agent-in-a-Box" pattern with strict security controls
+# Using Debian for better compatibility with Gemini CLI expectations
+
+FROM node:20-bookworm-slim
+
+# Install system dependencies that Gemini CLI expects
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Version control
+    ca-certificates \
+    curl \
+    git \
+    # Shell and process tools (GNU versions)
+    bash \
+    procps \
+    # Build tools for npm packages
+    python3 \
+    make \
+    g++ \
+    # Locale support for Gemini
+    locales \
+    && rm -rf /var/lib/apt/lists/* \
+    && locale-gen en_US.UTF-8
+
+# Set locale environment for Gemini
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
+
+# Create non-root user for secure execution
+RUN useradd -m -s /bin/bash -u 1001 appuser
+
+# Set working directory
+WORKDIR /workspace
+
+# Install agent CLI dependencies with lock file for reproducibility
+COPY package.json package-lock.json ./
+RUN npm ci --only=production --no-audit --no-fund \
+    && npm cache clean --force
+
+# Ensure CLIs are accessible in PATH
+ENV PATH="/workspace/node_modules/.bin:${PATH}"
+
+# Create output directory with proper permissions
+RUN mkdir -p /workspace/out && chown -R appuser:appuser /workspace
+
+# Switch to non-root user
+USER appuser
+
+# Set secure defaults
+ENV HOME=/home/appuser
+ENV USER=appuser
+ENV CI=1
+ENV NO_COLOR=1
+
+# Disable npm update notifier and telemetry
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV DISABLE_OPENCOLLECTIVE=true
+
+# Set working directory as volume mount point
+VOLUME ["/workspace"]
+
+# Default command (will be overridden by agent runner)
+CMD ["sh", "-c", "echo 'Agent sandbox ready' && sleep 10"]

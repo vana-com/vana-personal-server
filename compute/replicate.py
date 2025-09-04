@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from .base import BaseCompute, ExecuteResponse, GetResponse
 from settings import get_settings
 from domain.entities import GrantFile
+from domain.operation_context import OperationContext
 from utils.json_mode import create_json_mode_handler, ResponseFormatConfig, ResponseFormat
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,8 @@ class ReplicateLlmInference(BaseCompute):
         # Store response formats for predictions
         self._prediction_formats: Dict[str, Dict[str, Any]] = {}
 
-    def execute(self, grant_file: GrantFile, files_content: list[str]) -> ExecuteResponse:
+    def execute(self, grant_file: GrantFile, files_content: list[str], context: OperationContext) -> ExecuteResponse:
+        # Context is provided for consistency but not used by Replicate provider
         # Extract response_format from grant file parameters
         response_format = grant_file.parameters.get("response_format")
         
@@ -127,31 +129,40 @@ class ReplicateLlmInference(BaseCompute):
                     processed_result, error = json_handler.process_response(result)
                     
                     if isinstance(processed_result, dict):
-                        # Successfully parsed JSON - convert back to string for storage
-                        result = json.dumps(processed_result)
+                        # Successfully parsed JSON - use dict directly
+                        result = processed_result
                         logger.info(f"Successfully processed JSON response for prediction {prediction_id}")
                     elif error:
                         # JSON parsing failed - log error but return original result
                         logger.error(f"Failed to parse JSON response for prediction {prediction_id}: {error}")
                         # Note: In a production system, you might want to handle this differently
                         # For now, we'll return the original response with a wrapper indicating the error
-                        error_wrapper = {
+                        result = {
                             "error": "json_parse_failed",
                             "error_message": error,
                             "raw_response": result[:1000] if len(result) > 1000 else result
                         }
-                        result = json.dumps(error_wrapper)
                 
             # Clean up stored format after terminal states
             if prediction.status in ["succeeded", "failed", "canceled"]:
                 self._prediction_formats.pop(prediction_id, None)
 
+            # Convert result to dict format
+            result_dict = None
+            if result is not None:
+                if isinstance(result, dict):
+                    # Already a dict (either from JSON parsing above or native dict)
+                    result_dict = result
+                else:
+                    # Wrap non-dict results (strings, etc.) in a dict
+                    result_dict = {"output": result}
+            
             return GetResponse(
                 id=prediction.id,
                 status=prediction.status,
                 started_at=started_at,
                 finished_at=finished_at,
-                result=result
+                result=result_dict
             )
         except Exception as e:
             raise Exception(f"Failed to get prediction: {str(e)}")
