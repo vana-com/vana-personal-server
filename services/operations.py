@@ -205,12 +205,12 @@ class OperationsService:
         logger.info(f"[SERVICE] Getting operation status for {operation_id}")
         try:
             # Check if this is an agent operation based on ID prefix
-            if operation_id.startswith("qwen_"):
+            if operation_id.startswith("qwen_") or operation_id.startswith("prompt_qwen_agent"):
                 logger.info(f"[SERVICE] Routing get request to Qwen agent provider for {operation_id}")
                 from compute.qwen_agent import QwenCodeAgentProvider
                 agent_provider = QwenCodeAgentProvider()
                 result = await agent_provider.get(operation_id)
-            elif operation_id.startswith("gemini_"):
+            elif operation_id.startswith("gemini_") or operation_id.startswith("prompt_gemini_agent"):
                 logger.info(f"[SERVICE] Routing get request to Gemini agent provider for {operation_id}")
                 from compute.gemini_agent import GeminiAgentProvider
                 agent_provider = GeminiAgentProvider()
@@ -232,7 +232,20 @@ class OperationsService:
     def cancel(self, operation_id: str) -> bool:
         logger.info(f"[SERVICE] Cancelling operation {operation_id}")
         try:
-            result = self.compute.cancel(operation_id)
+            # Check if this is an agent operation based on ID prefix
+            if operation_id.startswith("qwen_") or operation_id.startswith("prompt_qwen_agent"):
+                logger.info(f"[SERVICE] Routing cancel request to Qwen agent provider for {operation_id}")
+                from compute.qwen_agent import QwenCodeAgentProvider
+                agent_provider = QwenCodeAgentProvider()
+                result = agent_provider.cancel(operation_id)
+            elif operation_id.startswith("gemini_") or operation_id.startswith("prompt_gemini_agent"):
+                logger.info(f"[SERVICE] Routing cancel request to Gemini agent provider for {operation_id}")
+                from compute.gemini_agent import GeminiAgentProvider
+                agent_provider = GeminiAgentProvider()
+                result = agent_provider.cancel(operation_id)
+            else:
+                result = self.compute.cancel(operation_id)
+            
             if result is None:
                 logger.error(f"[SERVICE] Operation {operation_id} not found for cancellation")
                 raise NotFoundError("Operation", operation_id)
