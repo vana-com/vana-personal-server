@@ -79,11 +79,13 @@ class ArtifactStorageService:
     
     def _encrypt_content(self, content: bytes, key: bytes) -> bytes:
         """Encrypt artifact content."""
+        logger.info(f"_encrypt_content: Using Fernet key first 10 bytes: {key[:10]}, key length: {len(key)}")
         f = Fernet(key)
         return f.encrypt(content)
     
     def _decrypt_content(self, encrypted_content: bytes, key: bytes) -> bytes:
         """Decrypt artifact content."""
+        logger.info(f"_decrypt_content: Using Fernet key first 10 bytes: {key[:10]}, key length: {len(key)}")
         f = Fernet(key)
         return f.decrypt(encrypted_content)
     
@@ -177,6 +179,7 @@ class ArtifactStorageService:
                     artifact_content = artifact_content.encode('utf-8')
                 
                 # Encrypt the artifact
+                logger.info(f"Encrypting artifact {artifact_name} with key first 10 bytes: {encryption_key[:10]}")
                 encrypted_content = self._encrypt_content(artifact_content, encryption_key)
                 
                 # Determine content type
