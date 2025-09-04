@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from .base import BaseCompute, ExecuteResponse, GetResponse
 from settings import get_settings
 from domain.entities import GrantFile
+from domain.operation_context import OperationContext
 from utils.json_mode import create_json_mode_handler, ResponseFormatConfig, ResponseFormat
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,8 @@ class ReplicateLlmInference(BaseCompute):
         # Store response formats for predictions
         self._prediction_formats: Dict[str, Dict[str, Any]] = {}
 
-    def execute(self, grant_file: GrantFile, files_content: list[str]) -> ExecuteResponse:
+    def execute(self, grant_file: GrantFile, files_content: list[str], context: OperationContext) -> ExecuteResponse:
+        # Context is provided for consistency but not used by Replicate provider
         # Extract response_format from grant file parameters
         response_format = grant_file.parameters.get("response_format")
         

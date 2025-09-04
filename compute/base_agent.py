@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
 from domain.entities import GrantFile
+from domain.operation_context import OperationContext
 from services.task_store import TaskStatus, get_task_store
 from services.agent_runtime_factory import create_agent_runner
 
@@ -116,13 +117,14 @@ class BaseAgentProvider(BaseCompute, ABC):
             f"GOAL:\n{goal}\n"
         )
     
-    async def execute(self, grant_file: GrantFile, files_content: list[str]) -> ExecuteResponse:
+    async def execute(self, grant_file: GrantFile, files_content: list[str], context: OperationContext) -> ExecuteResponse:
         """
         Start an agentic task asynchronously.
         
         Args:
             grant_file: Grant containing operation parameters
             files_content: List of decrypted file contents
+            context: Operation context with grantor/grantee information
             
         Returns:
             ExecuteResponse with operation ID (task runs in background)
@@ -131,8 +133,8 @@ class BaseAgentProvider(BaseCompute, ABC):
         if not goal or not isinstance(goal, str):
             raise ValueError(f"{self.AGENT_TYPE} operation requires 'goal' parameter")
         
-        # Generate operation ID
-        operation_id = f"{self.AGENT_TYPE}_{int(time.time() * 1000)}"
+        # Use operation ID from context
+        operation_id = context.operation_id
         created_at = datetime.utcnow().isoformat() + "Z"
         
         # Convert files to workspace format
@@ -143,7 +145,7 @@ class BaseAgentProvider(BaseCompute, ABC):
         
         # Start background task
         task = asyncio.create_task(
-            self._run_agent_async(operation_id, goal, files_dict, grant_file.grantee)
+            self._run_agent_async(operation_id, goal, files_dict, context)
         )
         
         # Store task reference
@@ -232,7 +234,7 @@ class BaseAgentProvider(BaseCompute, ABC):
         operation_id: str, 
         goal: str, 
         files_dict: Dict[str, bytes],
-        grantee_address: str
+        context: OperationContext
     ):
         """
         Run the agent in a background task.
@@ -264,7 +266,7 @@ class BaseAgentProvider(BaseCompute, ABC):
                 
                 # Process artifacts
                 artifacts = await self._process_artifacts(
-                    workspace, operation_id, grantee_address, result
+                    workspace, operation_id, context, result
                 )
                 
                 # Update result with artifact metadata
@@ -331,7 +333,7 @@ class BaseAgentProvider(BaseCompute, ABC):
         self, 
         workspace: str, 
         operation_id: str,
-        grantee_address: str,
+        context: OperationContext,
         result: Dict
     ) -> List[Dict]:
         """Process and store artifacts from Docker agent execution."""
@@ -345,9 +347,10 @@ class BaseAgentProvider(BaseCompute, ABC):
             filename = artifact.get("name")
             
             if content and filename:
-                # Store in artifact storage using just the filename (no out/ prefix)
+                # Store in artifact storage using both addresses
+                # Use grantor for encryption (data owner) and grantee for access control
                 await self.artifact_storage.store_artifact(
-                    operation_id, filename, content, grantee_address
+                    operation_id, filename, content, context.grantor, context.grantee
                 )
                 
                 # Add metadata for result

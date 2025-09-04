@@ -1,10 +1,12 @@
 import json
 import logging
+import time
 
 from web3 import AsyncWeb3
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
 from services.compute_registry import get_compute_registry
 from domain.entities import FileMetadata, GrantFile
+from domain.operation_context import OperationContext
 from domain.value_objects import PersonalServerRequest
 from eth_account.messages import encode_defunct
 from domain.exceptions import (
@@ -169,6 +171,16 @@ class OperationsService:
         logger.info(f"[SERVICE] Starting file content decryption for {len(files_metadata)} files [RequestID: {request_id}]")
         files_content = self._decrypt_files_content(files_metadata, server_private_key, request_id)
 
+        # Create operation context with both addresses
+        operation_id = f"{grant_file.operation}_{int(time.time() * 1000)}"
+        context = OperationContext(
+            operation_id=operation_id,
+            grantor=permission.grantor,  # User who owns the data
+            grantee=app_address,  # App with delegated access
+            permission_id=request.permission_id
+        )
+        logger.info(f"[SERVICE] Created operation context - ID: {operation_id}, Grantor: {permission.grantor}, Grantee: {app_address} [RequestID: {request_id}]")
+
         try:
             # Use registry to get appropriate compute provider
             registry = get_compute_registry()
@@ -176,11 +188,11 @@ class OperationsService:
             
             if provider:
                 logger.info(f"[SERVICE] Using registered provider for '{grant_file.operation}' [RequestID: {request_id}]")
-                result = await provider.execute(grant_file, files_content)
+                result = await provider.execute(grant_file, files_content, context)
             else:
                 # Fallback to default compute provider for unregistered operations
                 logger.info(f"[SERVICE] No registered provider for '{grant_file.operation}', using default [RequestID: {request_id}]")
-                result = await self.compute.execute(grant_file, files_content)
+                result = await self.compute.execute(grant_file, files_content, context)
             
             logger.info(f"[SERVICE] Compute operation completed successfully, operation ID: {result.id} [RequestID: {request_id}]")
             return result

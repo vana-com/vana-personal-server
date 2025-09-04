@@ -141,7 +141,8 @@ class ArtifactStorageService:
         self,
         operation_id: str,
         artifacts: List[Dict],
-        grantee_address: str,
+        grantor_address: str,  # For encryption
+        grantee_address: str,  # For access control
         expires_at: Optional[datetime] = None
     ) -> Dict:
         """
@@ -150,6 +151,7 @@ class ArtifactStorageService:
         Args:
             operation_id: Unique operation identifier
             artifacts: List of artifacts with 'name' and 'content' keys
+            grantor_address: Address of the data owner (for encryption)
             grantee_address: Address of the grantee (for access control)
             expires_at: When artifacts should expire
         
@@ -209,13 +211,14 @@ class ArtifactStorageService:
                 logger.error(f"Failed to store artifact {artifact.get('name', 'unknown')}: {e}")
                 # Continue with other artifacts
         
-        # Encrypt the symmetric key using ECIES with server's public key
-        encrypted_symmetric_key = self._encrypt_key_for_grantee(encryption_key, grantee_address)
+        # Encrypt the symmetric key using ECIES with grantor's server's public key
+        encrypted_symmetric_key = self._encrypt_key_for_grantee(encryption_key, grantor_address)
         
         # Store operation metadata
         operation_metadata = {
             "operation_id": operation_id,
-            "grantee_address": grantee_address,
+            "grantor_address": grantor_address,  # Who owns the data
+            "grantee_address": grantee_address,  # Who can access it
             "created_at": datetime.utcnow().isoformat(),
             "expires_at": expires_at.isoformat(),
             "encrypted_key": encrypted_symmetric_key,  # ECIES-encrypted, not plaintext!
@@ -272,16 +275,16 @@ class ArtifactStorageService:
                 logger.error(f"No metadata found for operation {operation_id}")
                 return None
             
-            # Decrypt the symmetric key using ECIES
-            grantee_address = metadata["grantee_address"]
+            # Decrypt the symmetric key using ECIES with grantor's keys
+            grantor_address = metadata.get("grantor_address", metadata.get("grantee_address"))  # Fallback for old data
             encrypted_key_hex = metadata.get("encrypted_key") or metadata.get("encryption_key", "")
             
             # Handle legacy format (base64) during transition
             if "encrypted_key" in metadata:
-                # New secure format - decrypt with ECIES
-                logger.info(f"Attempting ECIES decryption for operation {operation_id}")
+                # New secure format - decrypt with ECIES using grantor's keys
+                logger.info(f"Attempting ECIES decryption for operation {operation_id} using grantor {grantor_address}")
                 try:
-                    encryption_key = self._decrypt_key_for_grantee(encrypted_key_hex, grantee_address)
+                    encryption_key = self._decrypt_key_for_grantee(encrypted_key_hex, grantor_address)
                     logger.info(f"ECIES decryption successful, key length: {len(encryption_key)}")
                 except Exception as e:
                     logger.error(f"ECIES decryption failed: {e}", exc_info=True)
@@ -317,6 +320,7 @@ class ArtifactStorageService:
         operation_id: str,
         artifact_path: str,
         content: bytes,
+        grantor_address: str,
         grantee_address: str
     ) -> Dict:
         """
@@ -326,7 +330,8 @@ class ArtifactStorageService:
             operation_id: Operation identifier
             artifact_path: Path/name of the artifact
             content: Artifact content as bytes
-            grantee_address: Address of the grantee
+            grantor_address: Address of the data owner (for encryption)
+            grantee_address: Address of the grantee (for access control)
             
         Returns:
             Dictionary with storage result
@@ -339,6 +344,7 @@ class ArtifactStorageService:
         result = await self.store_artifacts(
             operation_id=operation_id,
             artifacts=[artifact],
+            grantor_address=grantor_address,
             grantee_address=grantee_address
         )
         
