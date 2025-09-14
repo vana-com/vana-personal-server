@@ -1,0 +1,175 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - 'test/**'
+      - 'devtest/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - test
+          - development
+          - production
+
+env:
+  DOCKER_REGISTRY: europe-west1-docker.pkg.dev
+  REPOSITORY_NAME: cloud-run-source-deploy
+  IMAGE_NAME: vana-personal-server
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=development" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" =~ ^refs/heads/(test|devtest)/.* ]]; then
+            echo "environment=test" >> $GITHUB_OUTPUT
+          else
+            echo "environment=test" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.7.1
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ steps.env.outputs.environment == 'production' && secrets.GCP_SA_KEY_PROD || secrets.GCP_SA_KEY_DEV }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.DOCKER_REGISTRY }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5.5.1
+        with:
+          images: |
+            ${{ env.DOCKER_REGISTRY }}/${{ steps.env.outputs.environment == 'production' && 'corsali-production' || 'corsali-development' }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.environment) || (github.ref == 'refs/heads/main' && '["production"]' || (github.ref == 'refs/heads/develop' && '["development"]' || '["test"]'))) }}
+    environment:
+      name: ${{ matrix.environment }}
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ matrix.environment == 'production' && secrets.GCP_SA_KEY_PROD || secrets.GCP_SA_KEY_DEV }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          # Determine project and service name based on environment
+          if [[ "${{ matrix.environment }}" == "production" ]]; then
+            PROJECT_ID="corsali-production"
+            SERVICE_NAME="vana-personal-server"
+          elif [[ "${{ matrix.environment }}" == "development" ]]; then
+            PROJECT_ID="corsali-development"
+            SERVICE_NAME="vana-personal-server"
+          else
+            PROJECT_ID="corsali-development"
+            SERVICE_NAME="vana-personal-server-test"
+          fi
+          
+          REGION="europe-west1"
+          IMAGE="${{ env.DOCKER_REGISTRY }}/${PROJECT_ID}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}"
+          
+          # Deploy with proper resource allocation and service account
+          gcloud run deploy ${SERVICE_NAME} \
+            --image=${IMAGE} \
+            --project=${PROJECT_ID} \
+            --region=${REGION} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --service-account=vana-personal-server@${PROJECT_ID}.iam.gserviceaccount.com \
+            --memory=${{ matrix.environment == 'production' && '2Gi' || '1Gi' }} \
+            --cpu=${{ matrix.environment == 'production' && '2' || '1' }} \
+            --min-instances=0 \
+            --max-instances=${{ matrix.environment == 'production' && '10' || '3' }} \
+            --timeout=60 \
+            --concurrency=100 \
+            --set-env-vars="CHAIN_ID=${{ matrix.environment == 'production' && '1480' || '14800' }}" \
+            --set-secrets="WALLET_MNEMONIC=WALLET_MNEMONIC:latest,REPLICATE_API_TOKEN=REPLICATE_API_TOKEN:latest"
+          
+          # Get the service URL
+          URL=$(gcloud run services describe ${SERVICE_NAME} \
+            --project=${PROJECT_ID} \
+            --region=${REGION} \
+            --format='value(status.url)')
+          
+          echo "url=${URL}" >> $GITHUB_OUTPUT
+
+      - name: Smoke test
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          echo "Testing deployment at ${URL}"
+          
+          # Wait for service to be ready
+          sleep 10
+          
+          # Test health endpoint
+          response=$(curl -s -o /dev/null -w "%{http_code}" "${URL}/docs" || true)
+          
+          if [[ "${response}" != "200" ]]; then
+            echo "❌ Health check failed with status ${response}"
+            exit 1
+          fi
+          
+          echo "✅ Deployment successful and healthy"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "⚠️ Deployment to ${{ matrix.environment }} failed"
+          echo "Check the logs above for details"

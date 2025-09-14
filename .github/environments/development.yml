@@ -1,0 +1,21 @@
+# Development Environment Configuration
+# This file documents the expected configuration for development deployments
+
+environment: development
+gcp:
+  project_id: corsali-development
+  region: europe-west1
+  service_name: vana-personal-server
+  
+resources:
+  memory: 1Gi
+  cpu: 1
+  min_instances: 0
+  max_instances: 3
+  
+environment_variables:
+  CHAIN_ID: "14800"  # Testnet chain ID
+  
+secrets:
+  - WALLET_MNEMONIC
+  - REPLICATE_API_TOKEN
