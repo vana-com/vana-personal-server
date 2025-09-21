@@ -74,30 +74,37 @@ class ReplicateLlmInference(BaseCompute):
     def execute(self, grant_file: GrantFile, files_content: list[str]) -> ExecuteResponse:
         # Extract response_format from grant file parameters
         response_format = grant_file.parameters.get("response_format")
-        
+
         # Create JSON mode handler if needed
         json_handler = create_json_mode_handler(response_format) if response_format else None
-        
+
         # Build base prompt
         prompt = self._build_prompt(grant_file, files_content)
-        
+
         # Modify prompt for JSON mode if needed
         if json_handler and response_format and response_format.get("type") == "json_object":
             prompt = json_handler.modify_prompt_for_json(prompt)
             logger.info("Modified prompt to enforce JSON output mode")
-        
+
         try:
             # Create prediction with potentially modified prompt
             prediction = self.client.predictions.create(
                 model=self.model_name,
-                input={"prompt": prompt}
+                input={
+                    "prompt": prompt,
+                    "max_tokens": 16384,  # Customize this value as needed (min: 2, max: 20480, default: 1024)
+                    # "temperature": 0.6,  # Optional: uncomment if needed (default: 0.6)
+                    # "presence_penalty": 0,  # Optional: uncomment if needed (default: 0)
+                    # "frequency_penalty": 0,  # Optional: uncomment if needed (default: 0)
+                    # "top_p": 1,  # Optional: uncomment if needed (default: 1)
+                }
             )
-            
+
             # Store response format for this prediction if provided
             if response_format:
                 self._prediction_formats[prediction.id] = response_format
                 logger.info(f"Stored response format for prediction {prediction.id}: {response_format}")
-            
+
             return ExecuteResponse(
                 id=prediction.id,
                 created_at=prediction.created_at
@@ -118,14 +125,14 @@ class ReplicateLlmInference(BaseCompute):
 
             # Check if this prediction has a stored response format
             response_format = self._prediction_formats.get(prediction_id)
-            
+
             # Process result based on response format if completed
             if result is not None and response_format and prediction.status == "succeeded":
                 json_handler = create_json_mode_handler(response_format)
                 if response_format.get("type") == "json_object":
                     # Process JSON response
                     processed_result, error = json_handler.process_response(result)
-                    
+
                     if isinstance(processed_result, dict):
                         # Successfully parsed JSON - convert back to string for storage
                         result = json.dumps(processed_result)
@@ -141,7 +148,7 @@ class ReplicateLlmInference(BaseCompute):
                             "raw_response": result[:1000] if len(result) > 1000 else result
                         }
                         result = json.dumps(error_wrapper)
-                
+
             # Clean up stored format after terminal states
             if prediction.status in ["succeeded", "failed", "canceled"]:
                 self._prediction_formats.pop(prediction_id, None)
