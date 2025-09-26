@@ -50,34 +50,37 @@ poetry run uvicorn app:app --reload --host 0.0.0.0 --port 8000
 
 The server will be available at `http://localhost:8000` with automatic OpenAPI docs at `http://localhost:8000/docs`.
 
-### Docker Setup
+### Docker (Quick Start)
 
-1. **Build the Docker images:**
+**Simplest way - use pre-built image:**
 ```bash
-# Build main server image
-docker build -t vana-personal-server .
+# 1. Create .env file with your secrets
+cat > .env << EOF
+REPLICATE_API_TOKEN=your_token_here
+WALLET_MNEMONIC=your_mnemonic_here
+CHAIN_ID=your_chain_id_here
+EOF
 
-# Build agent sandbox image (required for agent operations)
-./build-agent-image.sh
-```
+# 2. Run with docker-compose
+docker run --rm -v ${PWD}:/tmp alpine sh -c 'cat > /tmp/docker-compose.yml << "EOF"
+version: "3.8"
+services:
+  vana-personal-server:
+    image: opendatalabs/vana-personal-server:latest
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8080
+EOF'
 
-2. **Run with Docker:**
-```bash
-docker run -p 8080:8080 \
-  -e REPLICATE_API_TOKEN=your_token_here \
-  -e WALLET_MNEMONIC=your_mnemonic_here \
-  -e CHAIN_ID=your_chain_id_here \
-  -e MNEMONIC_LANGUAGE=english \
-  vana-personal-server
-```
-
-The server will be available at `http://localhost:8080`.
-
-3. **Using Docker Compose (recommended for agent support):**
-```bash
-# Create docker-compose.yml with your environment variables
+# 3. Start the server
 docker-compose up -d
 ```
+
+The server will be available at `http://localhost:8080/docs`
 
 ## API Reference
 
