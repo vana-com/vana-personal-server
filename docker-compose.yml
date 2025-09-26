@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   vana-personal-server:
-    image: opendatalabs/vana-personal-server:release-automation-d86be17
+    image: opendatalabs/vana-personal-server:release-automation-ea3e77a
     container_name: vana-personal-server
     ports:
       - "8080:8080"
