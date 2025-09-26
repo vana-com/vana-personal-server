@@ -61,20 +61,8 @@ WALLET_MNEMONIC=your_mnemonic_here
 CHAIN_ID=your_chain_id_here
 EOF
 
-# 2. Run with docker-compose
-docker run --rm -v ${PWD}:/tmp alpine sh -c 'cat > /tmp/docker-compose.yml << "EOF"
-version: "3.8"
-services:
-  vana-personal-server:
-    image: opendatalabs/vana-personal-server:latest
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
-    environment:
-      - API_HOST=0.0.0.0
-      - API_PORT=8080
-EOF'
+# 2. Download docker-compose.yml
+curl -O https://raw.githubusercontent.com/vana-com/vana-personal-server/release-automation/docker-compose.yml
 
 # 3. Start the server
 docker-compose up -d
