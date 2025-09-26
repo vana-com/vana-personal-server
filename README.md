@@ -1,5 +1,8 @@
 # Vana Personal-Server API
 
+[![semantic-release: conventionalcommits](https://img.shields.io/badge/semantic--release-conventionalcommits-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
+[![Release](https://github.com/vana-com/vana-personal-server/actions/workflows/semantic-release.yml/badge.svg)](https://github.com/vana-com/vana-personal-server/actions/workflows/semantic-release.yml)
+
 ⚠️ **UNDER HEAVY DEVELOPMENT** ⚠️  
 This project is in active development and may contain security vulnerabilities or breaking changes. 
 Use at your own risk in production environments.
