@@ -60,9 +60,34 @@ MAX_PROMPT_CHAR_LIMIT = 75000
 
 
 class ReplicateLlmInference(BaseCompute):
-    """Replicate API provider for ML model inference."""
+    """
+    Replicate API provider for LLM inference operations.
+    
+    Handles end-to-end LLM inference including prompt construction, data injection,
+    JSON mode enforcement, and asynchronous prediction lifecycle management.
+    Uses DeepSeek-V3 model by default with configurable parameters.
+    
+    Attributes:
+        client: Authenticated Replicate API client
+        model_name: Target model identifier (default: deepseek-ai/deepseek-v3)
+        _prediction_formats: Cache mapping prediction IDs to response format configs
+        
+    Configuration:
+        MAX_PROMPT_CHAR_LIMIT: Maximum prompt size (75,000 chars ~25k tokens)
+        PROMPT_DATA_SEPARATOR: Delimiter between data files ("-----" x 80)
+        
+    Note:
+        Token limits are conservative estimates (3 chars/token) to ensure
+        prompts fit within model context windows across different languages.
+    """
 
     def __init__(self):
+        """
+        Initialize Replicate client with API credentials.
+        
+        Raises:
+            ValueError: If REPLICATE_API_TOKEN is not configured
+        """
         self.settings = get_settings()
         self.client = replicate.Client(
             api_token=self.settings.replicate_api_token
@@ -72,6 +97,30 @@ class ReplicateLlmInference(BaseCompute):
         self._prediction_formats: Dict[str, Dict[str, Any]] = {}
 
     def execute(self, grant_file: GrantFile, files_content: list[str]) -> ExecuteResponse:
+        """
+        Execute LLM inference operation with user data.
+        
+        Creates a Replicate prediction with the provided prompt template and data.
+        Handles JSON mode configuration if specified in grant file parameters.
+        Automatically ensures data is included via {{data}} placeholder.
+        
+        Args:
+            grant_file: Permission grant containing prompt template and parameters.
+                Expected parameters:
+                - prompt (str): Template with optional {{data}} placeholder
+                - response_format (dict, optional): JSON mode configuration
+            files_content: List of decrypted file contents to inject into prompt
+            
+        Returns:
+            ExecuteResponse with prediction ID and creation timestamp
+            
+        Raises:
+            Exception: If prediction creation fails or Replicate API errors
+            
+        Note:
+            Predictions are asynchronous. Use get() method to poll for results.
+            Max tokens set to 16384 (configurable in future versions).
+        """
         # Extract response_format from grant file parameters
         response_format = grant_file.parameters.get("response_format")
 
@@ -113,6 +162,27 @@ class ReplicateLlmInference(BaseCompute):
             raise Exception(f"Failed to create prediction: {str(e)}")
 
     def get(self, prediction_id: str) -> GetResponse:
+        """
+        Retrieve prediction status and results.
+        
+        Polls Replicate API for prediction status. Processes JSON responses
+        if response_format was specified during creation. Cleans up cached
+        formats after terminal states.
+        
+        Args:
+            prediction_id: Unique prediction identifier from execute()
+            
+        Returns:
+            GetResponse with status, timestamps, and result (if completed)
+            
+        Raises:
+            Exception: If prediction retrieval fails
+            
+        Note:
+            Results are converted from list to string if needed.
+            JSON mode responses are validated and re-stringified.
+            Failed JSON parsing returns error wrapper with raw response.
+        """
         try:
             prediction = self.client.predictions.get(prediction_id)
             started_at = prediction.started_at if prediction.started_at else None
@@ -164,7 +234,22 @@ class ReplicateLlmInference(BaseCompute):
             raise Exception(f"Failed to get prediction: {str(e)}")
 
     def cancel(self, prediction_id: str) -> bool:
-        """Cancel a running prediction."""
+        """
+        Cancel a running prediction.
+        
+        Attempts best-effort cancellation of an in-progress prediction.
+        Only affects predictions in 'starting' or 'processing' states.
+        
+        Args:
+            prediction_id: Unique prediction identifier to cancel
+            
+        Returns:
+            True if cancellation succeeded, False otherwise
+            
+        Note:
+            Cancellation may not take effect if prediction is near completion.
+            Always check status after cancellation attempt.
+        """
         try:
             # Use the Replicate client directly
             prediction = self.client.predictions.cancel(prediction_id)
@@ -173,8 +258,33 @@ class ReplicateLlmInference(BaseCompute):
             return False
 
 
-    def _build_prompt(self, grant_file: GrantFile, files_content: list[str]):
+    def _build_prompt(self, grant_file: GrantFile, files_content: list[str]) -> str:
+        """
+        Construct final prompt with data injection.
+        
+        Ensures data is always included by appending {{data}} placeholder
+        if not present in template. Handles truncation when content exceeds
+        model context limits.
+        
+        Args:
+            grant_file: Permission grant with prompt template in parameters
+            files_content: Decrypted file contents to inject
+            
+        Returns:
+            Rendered prompt with data replacing {{data}} placeholder
+            
+        Note:
+            If prompt template lacks {{data}}, it's automatically appended.
+            Data is truncated with warning message if exceeding limits.
+            Empty data injected if prompt itself exceeds limit.
+        """
         prompt_template = grant_file.parameters.get("prompt", "")
+        
+        # Ensure {{data}} is in the prompt template
+        if "{{data}}" not in prompt_template:
+            logger.info("No {{data}} placeholder found in prompt, appending it to the end")
+            prompt_template = prompt_template + "\n\n{{data}}"
+        
         concatenated_data = (
             "\n"
             + PROMPT_DATA_SEPARATOR.join(files_content)

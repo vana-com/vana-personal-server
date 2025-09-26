@@ -1,55 +1,268 @@
 from typing import Annotated, Optional, Dict, Any, Literal
-from pydantic import BaseModel, Field, BeforeValidator
+from pydantic import BaseModel, Field, BeforeValidator, validator
+from datetime import datetime
 import re
 
-def validate_ethereum_address(value: str) -> str:
+def validate_evm_address(value: str) -> str:
+    """
+    Validate EIP-55 checksum EVM address format.
+    
+    Args:
+        value: Address string to validate
+        
+    Returns:
+        Validated address string
+        
+    Raises:
+        ValueError: If address format is invalid (not 40 hex chars with 0x prefix)
+    """
     if not re.match(r'^0x[a-fA-F0-9]{40}$', value):
-        raise ValueError('Invalid Ethereum address format')
+        raise ValueError(f'Invalid EVM address format: {value} - must be 42 chars (0x + 40 hex)')
+    # TODO: Add EIP-55 checksum validation
     return value
 
 def validate_public_key(value: str) -> str:
+    """
+    Validate secp256k1 public key format (compressed or uncompressed).
+    
+    Args:
+        value: Public key string to validate
+        
+    Returns:
+        Validated public key string
+        
+    Raises:
+        ValueError: If public key format is invalid
+    """
     # Ethereum public keys can be:
-    # - Uncompressed: 65 bytes (130 hex chars including 0x) - starts with 0x04
-    # - Compressed: 33 bytes (66 hex chars including 0x) - starts with 0x02 or 0x03
+    # - Compressed: 33 bytes (66 hex chars with 0x) - starts with 0x02 or 0x03
+    # - Uncompressed: 65 bytes (130 hex chars with 0x) - starts with 0x04
     if not re.match(r'^0x[a-fA-F0-9]{64}$|^0x[a-fA-F0-9]{130}$', value):
-        raise ValueError('Invalid public key format - must be exactly 64 or 130 hex characters')
+        raise ValueError(
+            f'Invalid public key format: {value} - '
+            'must be 66 chars (compressed) or 132 chars (uncompressed) with 0x prefix'
+        )
     return value
 
-EthereumAddress = Annotated[str, BeforeValidator(validate_ethereum_address)]
-PublicKey = Annotated[str, BeforeValidator(validate_public_key)]
+EVMAddress = Annotated[
+    str,
+    BeforeValidator(validate_evm_address),
+    Field(
+        description="EIP-55 checksum EVM address (20 bytes, 0x-prefixed)",
+        example="0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4",
+        pattern="^0x[a-fA-F0-9]{40}$"
+    )
+]
+
+PublicKey = Annotated[
+    str,
+    BeforeValidator(validate_public_key),
+    Field(
+        description="SEC1 uncompressed secp256k1 public key (65 bytes, 0x04-prefixed, 130 hex chars)",
+        example="0x04bcdf3e094f5c9a7819baedfabe81c235b8e6c8a5b26b62a98fa685deaac1e488090fa3c6b2667c1bf3a6e593bc0fb3e670f78a72e9fe0b1c40e2f9dda957f61a",
+        pattern="^0x[a-fA-F0-9]{130}$"
+    )
+]
 
 class IdentityRequestModel(BaseModel):
-    user_address: EthereumAddress
+    """Request model for identity queries."""
+    user_address: EVMAddress = Field(
+        description="User's EVM wallet address to query identity for",
+        example="0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4"
+    )
 
 class PersonalServerModel(BaseModel):
-    kind: str = Field(default="PersonalServer", description="Resource type identifier")
-    address: EthereumAddress
-    public_key: PublicKey
+    """Personal server identity information."""
+    kind: Literal["PersonalServer"] = Field(
+        default="PersonalServer",
+        description="Resource type identifier for response routing",
+        example="PersonalServer"
+    )
+    address: EVMAddress = Field(
+        description="Personal server's EVM wallet address",
+        example="0x742d35Cc6558Fd4D9e9E0E888F0462ef6919Bd36"
+    )
+    public_key: PublicKey = Field(
+        description="Personal server's public key for encryption (SEC1 uncompressed format)",
+        example="0x04bcdf3e094f5c9a7819baedfabe81c235b8e6c8a5b26b62a98fa685deaac1e488090fa3c6b2667c1bf3a6e593bc0fb3e670f78a72e9fe0b1c40e2f9dda957f61a"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "kind": "PersonalServer",
+                "address": "0x742d35Cc6558Fd4D9e9E0E888F0462ef6919Bd36",
+                "public_key": "0x04bcdf3e094f5c9a7819baedfabe81c235b8e6c8a5b26b62a98fa685deaac1e488090fa3c6b2667c1bf3a6e593bc0fb3e670f78a72e9fe0b1c40e2f9dda957f61a"
+            }
+        }
 
 class IdentityResponseModel(BaseModel):
-    kind: str = Field(default="Identity", description="Resource type identifier")
-    user_address: EthereumAddress
-    personal_server: PersonalServerModel
+    """Identity response containing user and personal server information."""
+    kind: Literal["Identity"] = Field(
+        default="Identity",
+        description="Resource type identifier for response routing",
+        example="Identity"
+    )
+    user_address: EVMAddress = Field(
+        description="User's EVM wallet address",
+        example="0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4"
+    )
+    personal_server: PersonalServerModel = Field(
+        description="Personal server details for this user"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "kind": "Identity",
+                "user_address": "0xf0ebD65BEaDacD191dc96D8EC69bbA4ABCf621D4",
+                "personal_server": {
+                    "kind": "PersonalServer",
+                    "address": "0x742d35Cc6558Fd4D9e9E0E888F0462ef6919Bd36",
+                    "public_key": "0x04bcdf3e094f5c9a7819baedfabe81c235b8e6c8a5b26b62a98fa685deaac1e488090fa3c6b2667c1bf3a6e593bc0fb3e670f78a72e9fe0b1c40e2f9dda957f61a"
+                }
+            }
+        }
 
 class CreateOperationRequest(BaseModel):
-    app_signature: str
-    operation_request_json: str
+    """Request payload for creating a new operation."""
+    app_signature: str = Field(
+        description=(
+            "ECDSA signature over operation_request_json using app's private key. "
+            "Must be hex-encoded with 0x prefix (132 chars total)"
+        ),
+        example="0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c",
+        pattern="^0x[a-fA-F0-9]{130}$",
+        min_length=132,
+        max_length=132
+    )
+    operation_request_json: str = Field(
+        description=(
+            "JSON-encoded operation request containing permission_id and optional parameters. "
+            "The operation type and parameters are defined in the grant file referenced by "
+            "the blockchain permission."
+        ),
+        example='{"permission_id": 1024}',
+        min_length=2,
+        max_length=100000
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "app_signature": "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c",
+                "operation_request_json": '{"permission_id": 1024}'
+            }
+        }
 
 class CreateOperationResponse(BaseModel):
-    kind: str = Field(default="OperationCreated", description="Resource type identifier")
-    id: str
-    created_at: str
+    """Response after successfully creating an operation."""
+    kind: Literal["OperationCreated"] = Field(
+        default="OperationCreated",
+        description="Resource type identifier for response routing",
+        example="OperationCreated"
+    )
+    id: str = Field(
+        description="Unique operation identifier for tracking and status queries",
+        example="cm4xp9qkw0001qj0g8xqg8xqg"
+    )
+    created_at: str = Field(
+        description="ISO 8601 timestamp when operation was created",
+        example="2024-01-01T00:00:00Z"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "kind": "OperationCreated",
+                "id": "cm4xp9qkw0001qj0g8xqg8xqg",
+                "created_at": "2024-01-01T00:00:00Z"
+            }
+        }
 
 class GetOperationResponse(BaseModel):
-    kind: str = Field(default="OperationStatus", description="Resource type identifier")
-    id: str
-    status: str
-    started_at: str | None = None
-    finished_at: str | None = None
-    result: str | None = None
+    """Operation status and result information."""
+    kind: Literal["OperationStatus"] = Field(
+        default="OperationStatus",
+        description="Resource type identifier for response routing",
+        example="OperationStatus"
+    )
+    id: str = Field(
+        description="Unique operation identifier",
+        example="cm4xp9qkw0001qj0g8xqg8xqg"
+    )
+    status: Literal["starting", "processing", "succeeded", "failed", "canceled"] = Field(
+        description=(
+            "Current operation status. "
+            "Transitions: starting → processing → (succeeded|failed|canceled)"
+        ),
+        example="processing"
+    )
+    started_at: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 timestamp when operation began processing",
+        example="2024-01-01T00:00:01Z"
+    )
+    finished_at: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 timestamp when operation completed (succeeded, failed, or canceled)",
+        example="2024-01-01T00:00:05Z"
+    )
+    result: Optional[str] = Field(
+        default=None,
+        description=(
+            "Operation result data. Format depends on operation type. "
+            "For LLM inference: generated text. "
+            "For JSON mode: stringified JSON object."
+        ),
+        example="The analysis of your data indicates positive trends in engagement metrics...",
+        max_length=5000000  # 5MB limit
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "kind": "OperationStatus",
+                "id": "cm4xp9qkw0001qj0g8xqg8xqg",
+                "status": "succeeded",
+                "started_at": "2024-01-01T00:00:01Z",
+                "finished_at": "2024-01-01T00:00:05Z",
+                "result": "The analysis of your data indicates positive trends..."
+            }
+        }
 
 class ErrorResponse(BaseModel):
-    kind: str = Field(default="Error", description="Resource type identifier")
-    detail: str
-    error_code: str
-    field: str | None = None
+    """Standardized error response format."""
+    kind: Literal["Error"] = Field(
+        default="Error",
+        description="Resource type identifier for error responses",
+        example="Error"
+    )
+    detail: str = Field(
+        description="Human-readable error message explaining what went wrong",
+        example="Signature verification failed"
+    )
+    error_code: str = Field(
+        description=(
+            "Machine-readable error code for programmatic handling. "
+            "Common codes: INVALID_SIGNATURE, PERMISSION_DENIED, NOT_FOUND, "
+            "RATE_LIMIT_EXCEEDED, INTERNAL_SERVER_ERROR"
+        ),
+        example="INVALID_SIGNATURE"
+    )
+    field: Optional[str] = Field(
+        default=None,
+        description="Specific field that caused the error, if applicable",
+        example="app_signature"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "kind": "Error",
+                "detail": "Signature verification failed",
+                "error_code": "INVALID_SIGNATURE",
+                "field": "app_signature",
+                "hint": "Ensure signature is hex-encoded with 0x prefix"
+            }
+        }
