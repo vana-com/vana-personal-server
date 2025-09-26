@@ -18,5 +18,6 @@ plugins:
     }]
   - "@semantic-release/github"
   - ["@codedependant/semantic-release-docker", {
-      "dockerImage": "opendatalabs/vana-personal-server"
+      "dockerImage": "opendatalabs/vana-personal-server",
+      "dockerPlatform": ["linux/amd64", "linux/arm64"]
     }]

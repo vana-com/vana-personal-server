@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   vana-personal-server:
     image: opendatalabs/vana-personal-server:release-automation
