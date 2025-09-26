@@ -20,11 +20,11 @@ RUN pip install --no-cache-dir poetry
 RUN adduser --system --disabled-password --gecos '' --group appuser
 
 # 2. Copy only the necessary package definition files
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY pyproject.toml poetry.lock* ./
 
 # 3. Install dependencies as root (creates node_modules with correct permissions)
-RUN npm install --only=production
+RUN npm ci --only=production
 # Install only dependencies first (not the project itself with --no-root)
 RUN poetry config virtualenvs.create false \
     && poetry install --only main --no-root --no-interaction --no-ansi
