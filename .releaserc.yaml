@@ -1,0 +1,23 @@
+branches:
+  - main
+  - name: beta
+    prerelease: true
+  - name: alpha
+    prerelease: true
+preset: "conventionalcommits"
+plugins:
+  - "@semantic-release/commit-analyzer"
+  - "@semantic-release/release-notes-generator"
+  - "@semantic-release/changelog"
+  - ["@semantic-release/exec", {
+      "prepareCmd": "echo ${nextRelease.version} > VERSION"
+    }]
+  - ["@semantic-release/git", {
+      "assets": ["CHANGELOG.md", "VERSION"],
+      "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+    }]
+  - "@semantic-release/github"
+  - ["@codedependant/semantic-release-docker", {
+      "dockerImage": "opendatalabs/vana-personal-server",
+      "dockerPlatform": ["linux/amd64", "linux/arm64"]
+    }]
