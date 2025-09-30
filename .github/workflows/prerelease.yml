@@ -7,7 +7,6 @@ on:
       - 'feature/**'
       - 'fix/**'
       - 'hotfix/**'
-      - 'release-automation'  # Remove this after testing
     paths-ignore:
       - '**.md'
       - '.github/**'
