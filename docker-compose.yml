@@ -1,109 +1,17 @@
-version: '3.8'
-
 services:
-  personal-server:
-    build: .
-    user: "${UID:-1000}:${GID:-1000}"
+  vana-personal-server:
+    image: opendatalabs/vana-personal-server:release-automation
+    container_name: vana-personal-server
     ports:
       - "8080:8080"
     env_file:
       - .env
     environment:
-      # Core configuration
-      - HOST_PROJECT_DIR=${PWD}
-      - WALLET_MNEMONIC=${WALLET_MNEMONIC:-test test test test test test test test test test test junk}
-      - CHAIN_ID=${CHAIN_ID:-1337}
-      - RPC_URL=${RPC_URL:-http://localhost:8545}
-      - DATA_REGISTRY_ADDRESS=${DATA_REGISTRY_ADDRESS:-0x0000000000000000000000000000000000000000}
-      - DATA_PERMISSIONS_ADDRESS=${DATA_PERMISSIONS_ADDRESS:-0x0000000000000000000000000000000000000000}
-      
-      # Enable mock mode for local testing
-      - MOCK_MODE=${MOCK_MODE:-true}
-      
-      # Replicate API token (required but not used in mock mode)
-      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN:-mock-token-for-testing}
-      
-      # Agent runtime: 'process' for Cloud Run, 'docker' for local dev (set in .env)
-      - AGENT_RUNTIME=${AGENT_RUNTIME:-process}
-      
-      # Docker agent configuration (when AGENT_RUNTIME=docker)
-      - DOCKER_AGENT_TIMEOUT_SEC=180
-      - DOCKER_AGENT_MAX_OUTPUT_MB=2
-      
-      # Process agent configuration (when AGENT_RUNTIME=process)
-      - AGENT_MAX_CONCURRENT_PER_INSTANCE=${AGENT_MAX_CONCURRENT_PER_INSTANCE:-1}
-      - AGENT_MEMORY_LIMIT_MB=${AGENT_MEMORY_LIMIT_MB:-2048}  # Node.js needs more virtual memory
-      - AGENT_TIMEOUT_SEC=180
-      - AGENT_FILE_SIZE_LIMIT_MB=100
-      - AGENT_MAX_OUTPUT_MB=2
-      
-      # Individual agent configuration (development mode - using OAuth)
-      - QWEN_TIMEOUT_SEC=180
-      - QWEN_MAX_STDOUT_MB=2
-      - GEMINI_TIMEOUT_SEC=180
-      - GEMINI_MAX_STDOUT_MB=2
-      
-      # Cloudflare R2 Configuration (optional - falls back to local storage)
-      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID:-}
-      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
-      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
-      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-personal-server-artifacts}
-      
-      # For production mode, uncomment and set these:
-      # - QWEN_API_KEY=${QWEN_API_KEY}
-      # - QWEN_API_URL=${QWEN_API_URL:-https://api.qwen.ai/v1}
-      # - QWEN_MODEL_NAME=${QWEN_MODEL_NAME:-qwen-coder-32b}
-      # - GEMINI_API_KEY=${GEMINI_API_KEY}
-      
-      # Logging
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      
-      # Disable rate limiting for local testing
-      - RATE_LIMIT_ENABLED=false
-      
-    volumes:
-      # Mount local directory for development
-      - ./:/app
-      # Mount docker socket for sibling container pattern (agents run in separate containers)
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Optional: Mount loop device for hard workspace size limit
-      # First run: sudo ./setup-loop-device.sh
-      # Then uncomment the line below:
-      # - /mnt/agent-workspace:/app/.agent_workspaces
-    # Grant access to Docker socket by adding container user to docker group
-    # Find your Docker GID with: getent group docker | cut -d: -f3
-    group_add:
-      - "999"  # Common Docker GID - adjust to match your host
-    networks:
-      - personal-server-net
+      - API_HOST=0.0.0.0
+      - API_PORT=8080
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/identity?address=0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-
-  # Optional: Local blockchain for testing
-  local-blockchain:
-    image: trufflesuite/ganache:latest
-    ports:
-      - "8545:8545"
-    command: >
-      -d
-      --accounts 10
-      --account_keys_path /ganache-data/keys.json
-      --mnemonic "test test test test test test test test test test test junk"
-      --chain.chainId 1337
-      --host 0.0.0.0
-    volumes:
-      - ganache-data:/ganache-data
-    networks:
-      - personal-server-net
-
-networks:
-  personal-server-net:
-    driver: bridge
-
-volumes:
-  ganache-data:
-    driver: local
