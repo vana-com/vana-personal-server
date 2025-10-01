@@ -1,6 +1,6 @@
 services:
   vana-personal-server:
-    image: opendatalabs/vana-personal-server:feat-agent-2304e29
+    image: opendatalabs/vana-personal-server:feat-agent
     container_name: vana-personal-server
     ports:
       - "8080:8080"
