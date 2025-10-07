@@ -1,6 +1,9 @@
 """
-Refactored base agent provider with clean separation of concerns.
-Uses centralized task store and Docker-based secure execution.
+Base agent provider with Docker-based secure execution.
+
+Provides abstract base class for headless AI agent providers that execute
+operations in sandboxed environments. Handles async execution, task state
+management, and artifact storage.
 """
 import asyncio
 import json
@@ -27,10 +30,34 @@ SENTINEL = "__AGENT_DONE__"
 
 class BaseAgentProvider(BaseCompute, ABC):
     """
-    Refactored base class for headless agent providers.
-    Uses dependency injection and centralized state management.
+    Base class for AI agent compute providers with sandboxed execution.
+
+    Manages the full lifecycle of agent operations from execution to artifact
+    storage. Agents run in isolated Docker containers or processes with
+    configurable network access and resource limits.
+
+    Subclasses must implement:
+        - get_cli_command(): Return the agent CLI executable name
+        - get_cli_args(): Build command-line arguments for the agent
+
+    Attributes:
+        CLI_NAME: Agent executable name (override in subclass)
+        AGENT_TYPE: Agent type identifier for logging (override in subclass)
+        REQUIRES_NETWORK: Whether agent needs external API access (default: False)
+        timeout_sec: Maximum agent execution time in seconds (default: 180)
+        max_stdout_bytes: Maximum captured output size (default: 2MB)
+
+    Configuration:
+        - Uses centralized TaskStore for operation state tracking
+        - Supports Docker (production) or process-based (testing) execution
+        - Artifacts are encrypted and stored per-operation
+        - Network isolation enforced by default for security
+
+    Note:
+        Agents execute in single-shot batch mode with no user interaction.
+        They must complete fully or fail - no streaming or checkpointing.
     """
-    
+
     # Subclasses should override these
     CLI_NAME = "agent"
     AGENT_TYPE = "base"
@@ -80,20 +107,70 @@ class BaseAgentProvider(BaseCompute, ABC):
     
     @abstractmethod
     def get_cli_command(self) -> str:
-        """Get the CLI command to execute."""
+        """
+        Get the agent CLI executable name.
+
+        Returns:
+            CLI command string (e.g., "qwen-agent", "gemini-agent")
+
+        Note:
+            Must be implemented by subclasses to specify the agent binary.
+        """
         pass
-    
+
     @abstractmethod
     def get_cli_args(self, prompt: str) -> List[str]:
-        """Get CLI arguments for the specific agent."""
+        """
+        Build command-line arguments for agent execution.
+
+        Args:
+            prompt: Formatted prompt with goal and file information
+
+        Returns:
+            List of CLI arguments to pass to the agent command
+
+        Note:
+            Must be implemented by subclasses. Should include model configuration,
+            output settings, and the prompt itself.
+        """
         pass
-    
+
     def get_env_overrides(self) -> Dict[str, str]:
-        """Get environment variable overrides for API authentication."""
+        """
+        Get environment variables for agent authentication.
+
+        Returns:
+            Dictionary of environment variable names to values (e.g., API keys)
+
+        Note:
+            Override in subclasses that require API authentication.
+            Default implementation returns empty dict for offline agents.
+        """
         return {}
     
     def build_prompt(self, goal: str, files_dict: Dict[str, bytes] = None) -> str:
-        """Build the prompt for the agent."""
+        """
+        Construct formatted prompt for batch agent execution.
+
+        Builds a comprehensive prompt that includes:
+        - Batch mode instructions (no interactivity)
+        - Available data file listing with sizes
+        - Output directory requirements (./out/)
+        - JSON result format specification
+        - Completion sentinel marker
+
+        Args:
+            goal: User's objective for the agent to accomplish
+            files_dict: Optional dict mapping filenames to file contents
+
+        Returns:
+            Formatted multi-line prompt string ready for agent execution
+
+        Note:
+            Agents must print a JSON summary line followed by SENTINEL marker
+            to indicate completion. Output format:
+            {"status":"ok|error","summary":"...","artifacts":["./out/..."]}
+        """
         files_info = ""
         if files_dict:
             files_list = []

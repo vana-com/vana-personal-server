@@ -1,4 +1,4 @@
-from typing import Annotated, Optional, Dict, Any, Literal
+from typing import Annotated, Optional, Dict, Any, Literal, List
 from pydantic import BaseModel, Field, BeforeValidator, validator
 from datetime import datetime
 import re
@@ -281,3 +281,63 @@ class ArtifactDownloadRequest(BaseModel):
         pattern="^0x[a-fA-F0-9]{130}$",
         example="0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
     )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "operation_id": "cm4xp9qkw0001qj0g8xqg8xqg",
+                "artifact_path": "outputs/result.json",
+                "signature": "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+            }
+        }
+
+class ArtifactInfo(BaseModel):
+    """Information about a single artifact file."""
+    path: str = Field(
+        description="Relative path to the artifact file",
+        example="outputs/analysis.json"
+    )
+    size: int = Field(
+        description="File size in bytes",
+        example=4096
+    )
+    content_type: str = Field(
+        description="MIME type of the artifact",
+        example="application/json"
+    )
+
+class ArtifactListResponse(BaseModel):
+    """Response containing list of available artifacts for an operation."""
+    kind: Literal["ArtifactList"] = Field(
+        default="ArtifactList",
+        description="Resource type identifier for response routing",
+        example="ArtifactList"
+    )
+    operation_id: str = Field(
+        description="Unique operation identifier",
+        example="cm4xp9qkw0001qj0g8xqg8xqg"
+    )
+    artifacts: List[ArtifactInfo] = Field(
+        description="List of available artifacts for this operation",
+        default=[]
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "kind": "ArtifactList",
+                "operation_id": "cm4xp9qkw0001qj0g8xqg8xqg",
+                "artifacts": [
+                    {
+                        "path": "outputs/analysis.json",
+                        "size": 4096,
+                        "content_type": "application/json"
+                    },
+                    {
+                        "path": "outputs/report.md",
+                        "size": 2048,
+                        "content_type": "text/markdown"
+                    }
+                ]
+            }
+        }

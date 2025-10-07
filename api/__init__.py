@@ -10,14 +10,17 @@ from .schemas import (
     # Request models
     CreateOperationRequest,
     IdentityRequestModel,
-    
+    ArtifactDownloadRequest,
+
     # Response models
     CreateOperationResponse,
     GetOperationResponse,
     IdentityResponseModel,
     PersonalServerModel,
     ErrorResponse,
-    
+    ArtifactListResponse,
+    ArtifactInfo,
+
     # Type validators
     EVMAddress,
     PublicKey,
@@ -27,14 +30,17 @@ __all__ = [
     # Request models
     "CreateOperationRequest",
     "IdentityRequestModel",
-    
+    "ArtifactDownloadRequest",
+
     # Response models
     "CreateOperationResponse",
-    "GetOperationResponse", 
+    "GetOperationResponse",
     "IdentityResponseModel",
     "PersonalServerModel",
     "ErrorResponse",
-    
+    "ArtifactListResponse",
+    "ArtifactInfo",
+
     # Type validators
     "EVMAddress",
     "PublicKey",
