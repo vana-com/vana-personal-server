@@ -12,11 +12,32 @@ integrating with various compute providers and supporting encrypted data process
 
 - **Secure Compute**: Execute operations on private data with cryptographic guarantees
 - **Blockchain Integration**: Data permissions managed through smart contracts
-- **Multiple Compute Providers**: Support for Replicate and other compute services
+- **Multiple Compute Providers**: Support for Replicate, OpenAI, and local AI inference
 - **Encrypted Data Processing**: Handle encrypted files with proper decryption
 - **Identity Management**: Derive server identities from user addresses
 - **IPFS Integration**: Fetch data grants from IPFS
 - **Robust Error Handling**: Comprehensive error handling and retry mechanisms
+- **Privacy-Preserving AI Pipeline**: Advanced privacy protection for AI processing
+- **Differential Privacy**: Mathematical guarantees for data privacy
+- **Secure Memory Management**: RAM cleanup to prevent data leaks
+- **Local AI Inference**: Process data locally without external exposure
+
+## Privacy Features
+
+### **Privacy-Preserving AI Pipeline**
+- **Document Classification**: Automatic categorization by type and risk level
+- **Feature Extraction**: Safe statistical and semantic feature extraction
+- **Differential Privacy**: Configurable epsilon values for privacy-accuracy trade-offs
+- **Embedding Generation**: Vector representations with anonymization
+- **Synthetic Data**: Artificial data preserving statistical properties
+- **Privacy Budget Management**: Track and limit information disclosure
+- **Secure Memory Cleanup**: Explicit RAM wiping after processing
+
+### **Compute Providers**
+- **Local Inference**: Ollama integration for complete privacy
+- **OpenAI Integration**: ChatGPT with privacy-enhanced prompts
+- **Replicate Fallback**: External AI when local processing unavailable
+- **Multi-Model Orchestration**: Infrastructure for combining multiple AI providers
 
 ## Quick Start
 
@@ -33,6 +54,8 @@ export REPLICATE_API_TOKEN=your_token_here
 export WALLET_MNEMONIC=your_mnemonic_here
 export CHAIN_ID=your_chain_id_here
 export MNEMONIC_LANGUAGE=english  # optional, defaults to english
+export OPENAI_API_KEY=your_openai_key_here  # optional, for ChatGPT integration
+export ANTHROPIC_API_KEY=your_anthropic_key_here  # optional, for Claude integration
 ```
 
 3. **Run the development server:**
@@ -61,6 +84,7 @@ docker run -p 8080:8080 \
   -e WALLET_MNEMONIC=your_mnemonic_here \
   -e CHAIN_ID=your_chain_id_here \
   -e MNEMONIC_LANGUAGE=english \
+  -e OPENAI_API_KEY=your_openai_key_here \
   vana-personal-server
 ```
 
@@ -97,11 +121,14 @@ vana-personal-server/
 │   ├── identity.py          # Identity derivation endpoints
 │   └── schemas.py           # API request/response schemas
 ├── services/                 # Business logic services
-│   ├── operations.py        # Operation orchestration
+│   ├── operations.py        # Operation orchestration with privacy pipeline
 │   └── identity.py          # Identity derivation service
 ├── compute/                  # Compute provider integrations
 │   ├── base.py              # Abstract compute interface
-│   └── replicate.py         # Replicate API integration
+│   ├── replicate.py         # Replicate API integration
+│   ├── local_inference.py   # Local AI inference with Ollama
+│   ├── openai_provider.py   # OpenAI integration with privacy controls
+│   └── privacy_preserving_inference.py # Privacy-enhanced external AI
 ├── onchain/                  # Blockchain integration
 │   ├── chain.py             # Blockchain connection management
 │   ├── data_registry.py     # Data registry contract interactions
@@ -120,12 +147,24 @@ vana-personal-server/
 │   └── exceptions.py        # Custom exceptions
 ├── utils/                    # Utility functions
 │   ├── derive_ethereum_keys.py # Ethereum key derivation
-│   └── ipfs.py              # IPFS integration utilities
+│   ├── ipfs.py              # IPFS integration utilities
+│   ├── differential_privacy.py # Differential privacy implementation
+│   ├── secure_memory.py     # Secure memory management
+│   ├── privacy_classifier.py # Document classification
+│   ├── feature_extractor.py # Safe feature extraction
+│   ├── embedding_generator.py # Vector embedding generation
+│   ├── synthetic_generator.py # Synthetic data generation
+│   └── privacy_pipeline.py  # Complete privacy pipeline
 ├── llm/                      # Large Language Model integration
 │   └── llm.py               # LLM service implementation
 ├── tests/                    # Test suite
 │   ├── unit/                # Unit tests
-│   └── integration/         # Integration tests
+│   ├── integration/         # Integration tests
+│   └── test_utils.py        # Test utilities for real data
+├── scripts/                  # Utility scripts
+│   ├── demo_flow.py         # Privacy pipeline demonstration
+│   ├── encryption_demo.py   # Encryption demonstration
+│   └── query_blockchain.py  # Blockchain data querying
 ├── Dockerfile               # Docker container configuration
 ├── pyproject.toml           # Poetry dependencies and project configuration
 └── openapi.yaml             # OpenAPI specification
@@ -146,6 +185,21 @@ poetry run pytest tests/unit/
 poetry run pytest tests/integration/
 ```
 
+### Privacy Pipeline Testing
+
+Test the privacy features:
+```bash
+# Test individual components
+poetry run python utils/differential_privacy.py
+poetry run python utils/secure_memory.py
+
+# Test complete pipeline
+poetry run python utils/privacy_pipeline.py
+
+# Test ChatGPT integration
+poetry run python test_chatgpt_integration.py
+```
+
 ### Code Quality
 
 This project uses Poetry for dependency management and follows Python best practices. The codebase is organized using clean architecture principles with clear separation between API, business logic, and infrastructure layers.
@@ -161,6 +215,8 @@ This project uses Poetry for dependency management and follows Python best pract
 **Optional environment variables:**
 
 - `MNEMONIC_LANGUAGE` - Language for mnemonic (optional, defaults to 'english')
+- `OPENAI_API_KEY` - OpenAI API key for ChatGPT integration
+- `ANTHROPIC_API_KEY` - Anthropic API key for Claude integration
 
 ### Security Considerations
 
@@ -170,6 +226,8 @@ This project uses Poetry for dependency management and follows Python best pract
 - Use secure methods to manage your wallet mnemonic in production
 - Review all permissions and data access patterns before deployment
 - Monitor for suspicious activity and implement appropriate logging
+- The privacy pipeline provides mathematical privacy guarantees but requires proper configuration
+- Local AI inference provides the highest level of privacy protection
 
 ## Contributing
 

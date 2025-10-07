@@ -2,8 +2,11 @@
 Dependency injection configuration for FastAPI.
 """
 
+import logging
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Dict
+
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends
 from compute.base import BaseCompute
@@ -25,7 +28,57 @@ def get_settings_dependency() -> Settings:
 @lru_cache()
 def get_compute_provider() -> BaseCompute:
     """Get compute provider instance."""
-    return ReplicateLlmInference()
+    try:
+        from compute.local_inference import LocalLlmInference
+        logger.info("Using Local Inference for complete privacy")
+        return LocalLlmInference()
+    except ImportError:
+        logger.warning("Local inference not available, falling back to Replicate")
+        return ReplicateLlmInference()
+
+@lru_cache()
+def get_openai_provider() -> BaseCompute:
+    """Get OpenAI provider instance for ChatGPT integration."""
+    try:
+        from compute.openai_provider import create_openai_provider
+        logger.info("Using OpenAI provider for ChatGPT integration")
+        return create_openai_provider()
+    except Exception as e:
+        logger.warning(f"OpenAI provider not available: {e}, falling back to local inference")
+        from compute.local_inference import LocalLlmInference
+        return LocalLlmInference()
+
+@lru_cache()
+def get_multi_model_provider() -> Dict[str, BaseCompute]:
+    """Get multiple model providers for orchestration."""
+    providers = {}
+    
+    try:
+        from compute.local_inference import LocalLlmInference
+        providers["local"] = LocalLlmInference()
+        logger.info("Local inference provider available")
+    except ImportError:
+        logger.warning("Local inference not available")
+    
+    try:
+        from compute.replicate import ReplicateLlmInference
+        providers["replicate"] = ReplicateLlmInference()
+        logger.info("Replicate provider available")
+    except ImportError:
+        logger.warning("Replicate provider not available")
+    
+    try:
+        from compute.openai_provider import create_openai_provider
+        providers["openai"] = create_openai_provider()
+        logger.info("OpenAI provider available")
+    except Exception as e:
+        logger.warning(f"OpenAI provider not available: {e}")
+    
+    if not providers:
+        raise RuntimeError("No compute providers available")
+    
+    logger.info(f"Multi-model provider initialized with {len(providers)} providers: {list(providers.keys())}")
+    return providers
 
 
 # Chain dependency

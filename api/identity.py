@@ -101,10 +101,10 @@ async def get_identity(
             error_code=e.error_code,
             field=getattr(e, 'field', None)
         )
-        raise HTTPException(status_code=e.status_code, detail=error_response.dict())
+        raise HTTPException(status_code=e.status_code, detail=error_response.model_dump())
     except Exception as e:
         error_response = ErrorResponse(
             detail="Internal server error",
             error_code="INTERNAL_SERVER_ERROR"
         )
-        raise HTTPException(status_code=500, detail=error_response.dict())
+        raise HTTPException(status_code=500, detail=error_response.model_dump())
