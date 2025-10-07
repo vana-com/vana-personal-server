@@ -24,7 +24,7 @@ from domain.exceptions import FileAccessError, ValidationError
 logger = logging.getLogger(__name__)
 
 # File size limits
-MAX_FILE_SIZE = 1024 * 1024  # 1MB
+MAX_FILE_SIZE = 1024 * 1024 * 5  # 5MB
 DEFAULT_CHUNK_SIZE = 8192    # 8KB chunks for streaming
 
 # URL type enumeration

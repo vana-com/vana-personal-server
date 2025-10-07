@@ -19,7 +19,7 @@ from .schemas import (
     ErrorResponse,
     
     # Type validators
-    EthereumAddress,
+    EVMAddress,
     PublicKey,
 )
 
@@ -36,6 +36,6 @@ __all__ = [
     "ErrorResponse",
     
     # Type validators
-    "EthereumAddress",
+    "EVMAddress",
     "PublicKey",
 ]
