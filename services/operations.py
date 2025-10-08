@@ -193,7 +193,12 @@ class OperationsService:
                 # Fallback to default compute provider for unregistered operations
                 logger.info(f"[SERVICE] No registered provider for '{grant_file.operation}', using default [RequestID: {request_id}]")
                 result = self.compute.execute(grant_file, files_content, context)
-            
+
+            # Handle both sync (Replicate) and async (Agent) providers
+            import inspect
+            if inspect.iscoroutine(result):
+                result = await result
+
             logger.info(f"[SERVICE] Compute operation completed successfully, operation ID: {result.id} [RequestID: {request_id}]")
             return result
         except Exception as e:
