@@ -18,7 +18,7 @@ help: ## Show this help message
 
 build: ## Build Docker images (server and agent sandbox)
 	@echo "Building agent sandbox image..."
-	@docker build -f Dockerfile.agent -t vana-agent-sandbox . || { echo "Failed to build agent image"; exit 1; }
+	@docker build -f compute/docker-sandbox/Dockerfile.agent -t vana-agent-sandbox . || { echo "Failed to build agent image"; exit 1; }
 	@echo "Building server image..."
 	$(DOCKER_COMPOSE) build
 

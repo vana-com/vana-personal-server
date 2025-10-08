@@ -2,7 +2,8 @@
 # Build the agent sandbox Docker image
 
 echo "Building agent sandbox Docker image..."
-docker build -f Dockerfile.agent -t vana-agent-sandbox .
+cd "$(dirname "$0")/../.." || exit 1
+docker build -f compute/docker-sandbox/Dockerfile.agent -t vana-agent-sandbox .
 
 if [ $? -eq 0 ]; then
     echo "✓ Agent sandbox image built successfully: vana-agent-sandbox"
