@@ -352,15 +352,18 @@ class ProcessAgentRunner:
             
             # Wait for process to complete
             return_code = await proc.wait()
-            
-            # Also capture stderr if there was an error
-            if return_code != 0 and proc.stderr:
+
+            # Always capture stderr (warnings, debug info, loop detection messages)
+            if proc.stderr:
                 stderr = await proc.stderr.read()
                 if stderr:
                     stderr_str = stderr.decode("utf-8", errors="ignore").strip()
                     if stderr_str:
                         stdout_lines.append(f"STDERR: {stderr_str}")
-                        logger.error(f"[PROCESS-{agent_type}] Process stderr: {stderr_str}")
+                        if return_code != 0:
+                            logger.error(f"[PROCESS-{agent_type}] Process stderr: {stderr_str}")
+                        else:
+                            logger.info(f"[PROCESS-{agent_type}] Process stderr (non-error): {stderr_str}")
             
         except asyncio.TimeoutError:
             logger.warning(f"[PROCESS-{agent_type}] Process timed out, killing...")
