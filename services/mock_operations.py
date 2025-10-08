@@ -112,14 +112,23 @@ class MockOperationsService:
             )
             logger.info("[MOCK] Created default LLM inference grant file")
         
+        # Create mock operation context
+        from domain.operation_context import OperationContext
+        context = OperationContext(
+            operation_id=f"mock_{int(time.time() * 1000)}",
+            grantor=mock_permission["grantor"],
+            grantee=mock_permission["grantee"],
+            permission_id=permission_id or 1
+        )
+
         # Route to appropriate provider using registry
         try:
             registry = get_compute_registry()
             provider = registry.get_provider(mock_grant_file.operation)
-            
+
             if provider:
                 logger.info(f"[MOCK] Using registered provider for '{mock_grant_file.operation}' [RequestID: {request_id}]")
-                result = await provider.execute(mock_grant_file, mock_files_content)
+                result = await provider.execute(mock_grant_file, mock_files_content, context)
             else:
                 # Mock standard compute response for unregistered operations
                 logger.info(f"[MOCK] No registered provider, using mock response [RequestID: {request_id}]")

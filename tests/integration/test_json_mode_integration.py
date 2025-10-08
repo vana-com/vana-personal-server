@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch, MagicMock
 from compute.replicate import ReplicateLlmInference
 from compute.base import ExecuteResponse, GetResponse
 from domain.entities import GrantFile
+from domain.operation_context import OperationContext
 from utils.json_mode import ResponseFormat
 
 
@@ -31,7 +32,8 @@ class TestReplicateLlmInferenceJSONMode:
             with patch('compute.replicate.replicate.Client', return_value=mock_client):
                 return ReplicateLlmInference()
 
-    def test_execute_with_json_mode(self, llm_inference, mock_client):
+    @pytest.mark.asyncio
+    async def test_execute_with_json_mode(self, llm_inference, mock_client):
         """Test execute method with JSON mode enabled."""
         # Setup
         grant_file = GrantFile(
@@ -43,15 +45,21 @@ class TestReplicateLlmInferenceJSONMode:
             }
         )
         files_content = ["file1 content", "file2 content"]
-        
+        context = OperationContext(
+            operation_id="test_op_123",
+            grantor="0xGrantor",
+            grantee="0x123",
+            permission_id=1
+        )
+
         # Mock prediction response
         mock_prediction = Mock()
         mock_prediction.id = "test-prediction-123"
         mock_prediction.created_at = "2024-01-01T00:00:00Z"
         mock_client.predictions.create.return_value = mock_prediction
-        
+
         # Execute
-        result = llm_inference.execute(grant_file, files_content)
+        result = await llm_inference.execute(grant_file, files_content, context)
         
         # Verify
         assert result.id == "test-prediction-123"
@@ -66,7 +74,8 @@ class TestReplicateLlmInferenceJSONMode:
         # Check that response format was stored
         assert llm_inference._prediction_formats["test-prediction-123"] == {"type": "json_object"}
 
-    def test_execute_without_json_mode(self, llm_inference, mock_client):
+    @pytest.mark.asyncio
+    async def test_execute_without_json_mode(self, llm_inference, mock_client):
         """Test execute method without JSON mode (text mode)."""
         # Setup
         grant_file = GrantFile(
@@ -75,15 +84,21 @@ class TestReplicateLlmInferenceJSONMode:
             parameters={"prompt": "Analyze this data: {{data}}"}
         )
         files_content = ["file1 content", "file2 content"]
-        
+        context = OperationContext(
+            operation_id="test_op_456",
+            grantor="0xGrantor",
+            grantee="0x123",
+            permission_id=1
+        )
+
         # Mock prediction response
         mock_prediction = Mock()
         mock_prediction.id = "test-prediction-456"
         mock_prediction.created_at = "2024-01-01T00:00:00Z"
         mock_client.predictions.create.return_value = mock_prediction
-        
+
         # Execute without response_format
-        result = llm_inference.execute(grant_file, files_content)
+        result = await llm_inference.execute(grant_file, files_content, context)
         
         # Verify
         assert result.id == "test-prediction-456"
@@ -289,7 +304,8 @@ class TestReplicateLlmInferenceJSONMode:
         # Check that response format was cleaned up
         assert prediction_id not in llm_inference._prediction_formats
 
-    def test_prompt_truncation_with_json_mode(self, llm_inference, mock_client):
+    @pytest.mark.asyncio
+    async def test_prompt_truncation_with_json_mode(self, llm_inference, mock_client):
         """Test that prompt truncation still works with JSON mode."""
         # Setup
         grant_file = GrantFile(
@@ -302,15 +318,21 @@ class TestReplicateLlmInferenceJSONMode:
         )
         # Create very large content that will be truncated
         files_content = ["x" * 100000]  # Very large content
-        
+        context = OperationContext(
+            operation_id="test_op_truncate",
+            grantor="0xGrantor",
+            grantee="0x123",
+            permission_id=1
+        )
+
         # Mock prediction response
         mock_prediction = Mock()
         mock_prediction.id = "test-prediction-truncate"
         mock_prediction.created_at = "2024-01-01T00:00:00Z"
         mock_client.predictions.create.return_value = mock_prediction
-        
+
         # Execute
-        result = llm_inference.execute(grant_file, files_content)
+        result = await llm_inference.execute(grant_file, files_content, context)
         
         # Verify
         assert result.id == "test-prediction-truncate"

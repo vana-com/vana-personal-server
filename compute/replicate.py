@@ -97,7 +97,7 @@ class ReplicateLlmInference(BaseCompute):
         # Store response formats for predictions
         self._prediction_formats: Dict[str, Dict[str, Any]] = {}
 
-    def execute(self, grant_file: GrantFile, files_content: list[str], context: OperationContext) -> ExecuteResponse:
+    async def execute(self, grant_file: GrantFile, files_content: list[str], context: OperationContext) -> ExecuteResponse:
         """
         Execute LLM inference operation with user data.
 
