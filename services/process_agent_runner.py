@@ -227,17 +227,19 @@ class ProcessAgentRunner:
     def _prepare_resource_limits(self):
         """Prepare resource limit function for preexec_fn."""
         def apply_limits():
-            # Note: Node.js needs significant virtual memory for V8 heap
-            # We skip RLIMIT_AS for Node processes as it causes immediate OOM
-            # Instead rely on container-level memory limits
-            
-            # Set file size limit (this is safe for all processes)
+            # Note: RLIMIT_AS limits virtual address space, not physical memory (RSS).
+            # V8 reserves 15-20Gi virtual space but uses much less physically.
+            # Setting RLIMIT_AS too low causes immediate malloc failures.
+            # Instead, we limit V8 heap via NODE_OPTIONS --max-old-space-size.
+            # Cloud Run enforces container-level memory at the instance boundary.
+
+            # Set file size limit (safe for all processes)
             file_size_bytes = self.file_size_limit_mb * 1024 * 1024
             resource.setrlimit(resource.RLIMIT_FSIZE, (file_size_bytes, file_size_bytes))
-            
+
             # Create new process group for clean kills
             os.setsid()
-            
+
         return apply_limits
     
     async def _run_process(
@@ -266,8 +268,13 @@ class ProcessAgentRunner:
             "USER": "appuser",  # Set USER to avoid os.userInfo() errors
             "NODE_ENV": "production",  # Set Node environment
         })
-        
-        logger.info(f"[PROCESS-{agent_type}] Executing: {' '.join(full_command)}")
+
+        # Limit Node.js V8 heap to prevent memory exhaustion
+        # This is the primary memory control for Node-based agents (qwen, gemini)
+        node_opts = f"--max-old-space-size={self.memory_limit_mb} {process_env.get('NODE_OPTIONS', '')}"
+        process_env["NODE_OPTIONS"] = node_opts.strip()
+
+        logger.info(f"[PROCESS-{agent_type}] Starting agent (op={operation_id}, heap_limit={self.memory_limit_mb}MB)")
         logger.debug(f"[PROCESS-{agent_type}] Working directory: {workspace_path}")
         logger.info(f"[PROCESS-{agent_type}] Running as UID={os.getuid()}, GID={os.getgid()}")
         
@@ -307,9 +314,10 @@ class ProcessAgentRunner:
         stdin_input: Optional[str] = None
     ) -> Dict[str, Any]:
         """Handle process output with streaming and timeout."""
-        
+
+        process_start = time.time()
         stdout_lines = []
-        
+
         try:
             # Send stdin if provided
             if stdin_input and proc.stdin:
@@ -376,12 +384,13 @@ class ProcessAgentRunner:
         
         # Parse agent result from stdout
         agent_result = self._parse_agent_output(stdout_lines, agent_type)
-        
+
         # Extract logs (excluding JSON output and sentinel)
         logs = self._extract_logs_from_stdout(stdout_lines)
-        
-        logger.info(f"[PROCESS-{agent_type}] Process completed with code {return_code}")
-        
+
+        duration = time.time() - process_start
+        logger.info(f"[PROCESS-{agent_type}] Agent exited (op={operation_id}, code={return_code}, duration={duration:.1f}s)")
+
         return {
             "status": agent_result.get("status", "ok"),
             "summary": agent_result.get("summary", "Agent completed successfully"),

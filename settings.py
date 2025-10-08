@@ -284,9 +284,9 @@ class Settings(BaseSettings):
     )
     
     agent_memory_limit_mb: int = Field(
-        default=2048,
+        default=1024,
         alias="AGENT_MEMORY_LIMIT_MB",
-        description="Memory limit per agent process in megabytes (Note: Node.js needs significant virtual memory)"
+        description="V8 heap limit for Node.js agents via --max-old-space-size (MB). Cloud Run container limit enforces instance-level memory."
     )
     
     agent_timeout_sec: int = Field(
