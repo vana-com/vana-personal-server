@@ -64,7 +64,7 @@ class GeminiAgentProvider(BaseAgentProvider):
         # (we're already running inside our own sandbox container)
         return ["-p", prompt, "-y", "--sandbox=false"]
 
-    def build_prompt(self, goal: str, files_dict: Dict[str, bytes] = None) -> str:
+    def build_prompt(self, goal: str, files_dict: Dict[str, bytes] = None, deadline_unix: float = None) -> str:
         """Build a prompt for Gemini CLI that requests artifacts."""
         files_info = ""
         if files_dict:
@@ -74,9 +74,20 @@ class GeminiAgentProvider(BaseAgentProvider):
                 files_list.append(f"  - {filename} ({size_kb:.1f}KB)")
             files_info = f"\n\nData files available:\n" + "\n".join(files_list) + "\n"
 
+        deadline_info = ""
+        if deadline_unix:
+            from datetime import datetime
+            deadline_dt = datetime.fromtimestamp(deadline_unix)
+            deadline_info = (
+                f"\n\nTIME LIMIT:\n"
+                f"- You must complete by Unix timestamp {deadline_unix:.0f} ({deadline_dt.strftime('%Y-%m-%d %H:%M:%S')})\n"
+                f"- Monitor system time (date +%s) to track progress\n"
+                f"- If approaching deadline, output partial results rather than incomplete work\n"
+            )
+
         return (
             f"You are a helpful AI assistant running in batch mode. "
-            f"Read and analyze any data files in the current directory.{files_info}\n\n"
+            f"Read and analyze any data files in the current directory.{files_info}{deadline_info}\n\n"
             f"Task: {goal}\n\n"
             f"IMPORTANT INSTRUCTIONS:\n"
             f"1. Create a directory called 'out' for your outputs\n"
