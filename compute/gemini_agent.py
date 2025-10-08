@@ -1,6 +1,8 @@
 """
 Gemini CLI Agent provider for headless, one-shot agentic tasks.
 
+Note: This feature is experimental and the API may change in future releases.
+
 Inherits from BaseAgentProvider to leverage shared functionality
 for PTY-based headless execution of Google's Gemini CLI.
 """
@@ -16,6 +18,8 @@ logger = logging.getLogger(__name__)
 class GeminiAgentProvider(BaseAgentProvider):
     """
     Compute provider for headless Gemini CLI agent execution.
+
+    Experimental: This provider is under active development and may change.
 
     Executes gemini CLI in a controlled, isolated environment
     with a strict contract for deterministic results.

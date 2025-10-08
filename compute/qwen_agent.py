@@ -1,6 +1,8 @@
 """
 Qwen Code Agent provider for headless, one-shot agentic tasks.
 
+Note: This feature is experimental and the API may change in future releases.
+
 Inherits from BaseAgentProvider to leverage shared functionality
 for PTY-based headless execution of qwen-code CLI.
 """
@@ -16,7 +18,9 @@ logger = logging.getLogger(__name__)
 class QwenCodeAgentProvider(BaseAgentProvider):
     """
     Compute provider for headless qwen-code agent execution.
-    
+
+    Experimental: This provider is under active development and may change.
+
     Executes qwen-code CLI in a controlled, isolated environment
     with a strict contract for deterministic results.
     """

@@ -32,6 +32,8 @@ class BaseAgentProvider(BaseCompute, ABC):
     """
     Base class for AI agent compute providers with sandboxed execution.
 
+    Experimental: Agent providers are under active development and may change.
+
     Manages the full lifecycle of agent operations from execution to artifact
     storage. Agents run in isolated Docker containers or processes with
     configurable network access and resource limits.

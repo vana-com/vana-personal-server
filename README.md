@@ -16,6 +16,7 @@ integrating with various compute providers and supporting encrypted data process
 - **Secure Compute**: Execute operations on private data with cryptographic guarantees
 - **Blockchain Integration**: Data permissions managed through smart contracts
 - **Multiple Compute Providers**: Support for Replicate and other compute services
+- **AI Agents (Experimental)**: Qwen and Gemini agent providers for agentic workflows
 - **Encrypted Data Processing**: Handle encrypted files with proper decryption
 - **Identity Management**: Derive server identities from user addresses
 - **IPFS Integration**: Fetch data grants from IPFS
@@ -99,7 +100,9 @@ vana-personal-server/
 │   └── identity.py          # Identity derivation service
 ├── compute/                  # Compute provider integrations
 │   ├── base.py              # Abstract compute interface
-│   └── replicate.py         # Replicate API integration
+│   ├── replicate.py         # Replicate API integration
+│   ├── qwen_agent.py        # Qwen agent provider (experimental)
+│   └── gemini_agent.py      # Gemini agent provider (experimental)
 ├── onchain/                  # Blockchain integration
 │   ├── chain.py             # Blockchain connection management
 │   ├── data_registry.py     # Data registry contract interactions
