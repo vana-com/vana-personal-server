@@ -298,15 +298,11 @@ class BaseAgentProvider(BaseCompute, ABC):
         return files_dict
     
     def _map_status(self, status: TaskStatus) -> str:
-        """Map internal status to API status."""
-        mapping = {
-            TaskStatus.PENDING: "pending",
-            TaskStatus.RUNNING: "running",
-            TaskStatus.SUCCEEDED: "succeeded",
-            TaskStatus.FAILED: "failed",
-            TaskStatus.CANCELLED: "cancelled"
-        }
-        return mapping.get(status, "failed")
+        """Return API-compatible status value.
+
+        TaskStatus enum values now match API schema directly.
+        """
+        return status.value
     
     async def _run_agent_async(
         self, 

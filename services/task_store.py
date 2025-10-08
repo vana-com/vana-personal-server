@@ -14,12 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 class TaskStatus(Enum):
-    """Task execution status."""
-    PENDING = "pending"
-    RUNNING = "running"
+    """Task execution status.
+
+    Values match API schema: "starting", "processing", "succeeded", "failed", "canceled"
+    """
+    PENDING = "starting"
+    RUNNING = "processing"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
-    CANCELLED = "cancelled"
+    CANCELLED = "canceled"
 
 
 @dataclass
