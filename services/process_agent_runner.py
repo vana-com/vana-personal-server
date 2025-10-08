@@ -258,16 +258,18 @@ class ProcessAgentRunner:
         # Prepare full command
         full_command = [command] + args
         
-        # Prepare environment
-        process_env = {**os.environ, **env_vars}
-        process_env.update({
-            "PYTHONUNBUFFERED": "1",  # Force line buffering
-            "NO_COLOR": "1",  # Disable color output
-            "PATH": "/app/node_modules/.bin:" + os.environ.get("PATH", ""),  # Add node_modules to PATH
-            "HOME": str(workspace_path),  # Set HOME to the workspace directory
-            "USER": "appuser",  # Set USER to avoid os.userInfo() errors
-            "NODE_ENV": "production",  # Set Node environment
-        })
+        # Prepare clean environment with only agent-specific credentials
+        # Prevents auth conflicts: qwen-code prioritizes GEMINI_API_KEY over OPENAI_API_KEY
+        # in env detection, causing it to call wrong API even when OPENAI_* vars are set
+        process_env = {
+            "PYTHONUNBUFFERED": "1",
+            "NO_COLOR": "1",
+            "PATH": "/app/node_modules/.bin:" + os.environ.get("PATH", ""),
+            "HOME": str(workspace_path),
+            "USER": "appuser",
+            "NODE_ENV": "production",
+            **env_vars  # Agent-specific credentials from get_env_overrides()
+        }
 
         # Limit Node.js V8 heap to prevent memory exhaustion
         # This is the primary memory control for Node-based agents (qwen, gemini)
