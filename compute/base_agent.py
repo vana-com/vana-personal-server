@@ -150,7 +150,7 @@ class BaseAgentProvider(BaseCompute, ABC):
         """
         return {}
     
-    def build_prompt(self, goal: str, files_dict: Dict[str, bytes] = None) -> str:
+    def build_prompt(self, goal: str, files_dict: Dict[str, bytes] = None, deadline_unix: float = None) -> str:
         """
         Construct formatted prompt for batch agent execution.
 
@@ -180,10 +180,21 @@ class BaseAgentProvider(BaseCompute, ABC):
                 size_kb = len(content) / 1024
                 files_list.append(f"  - {filename} ({size_kb:.1f}KB)")
             files_info = f"\n\nAVAILABLE DATA FILES:\n" + "\n".join(files_list) + "\n"
-        
+
+        deadline_info = ""
+        if deadline_unix:
+            from datetime import datetime
+            deadline_dt = datetime.fromtimestamp(deadline_unix)
+            deadline_info = (
+                f"\n\nTIME LIMIT:\n"
+                f"- You must complete by Unix timestamp {deadline_unix:.0f} ({deadline_dt.strftime('%Y-%m-%d %H:%M:%S')})\n"
+                f"- Monitor system time (date +%s) to track progress\n"
+                f"- If approaching deadline, output partial results rather than incomplete work\n"
+            )
+
         return (
             f"You are running in a headless, single-shot batch mode. "
-            f"Work only inside the current directory.{files_info}\n"
+            f"Work only inside the current directory.{files_info}{deadline_info}\n"
             f"IMPORTANT: Read and analyze the available data files to complete your task.\n"
             f"Generate output files in ./out/ directory.\n\n"
             f"CONSTRAINTS:\n"
@@ -318,7 +329,11 @@ class BaseAgentProvider(BaseCompute, ABC):
         try:
             # Update status to running
             await self._task_store.update_status(operation_id, TaskStatus.RUNNING)
-            
+
+            # Calculate deadline (80% of timeout to give agent time to wrap up)
+            start_time = time.time()
+            deadline_unix = start_time + (self.timeout_sec * 0.8)
+
             # Create workspace
             with tempfile.TemporaryDirectory() as workspace:
                 # Stage files
@@ -326,9 +341,9 @@ class BaseAgentProvider(BaseCompute, ABC):
                     filepath = os.path.join(workspace, filename)
                     with open(filepath, 'wb') as f:
                         f.write(content)
-                
-                # Build prompt
-                prompt = self.build_prompt(goal, files_dict)
+
+                # Build prompt with deadline
+                prompt = self.build_prompt(goal, files_dict, deadline_unix=deadline_unix)
                 
                 # Get CLI command and args
                 command = self.get_cli_command()
