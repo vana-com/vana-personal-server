@@ -2,6 +2,7 @@ from typing import Annotated, Optional, Dict, Any, Literal, List
 from pydantic import BaseModel, Field, BeforeValidator, validator
 from datetime import datetime
 import re
+import json
 
 def validate_evm_address(value: str) -> str:
     """
@@ -138,14 +139,27 @@ class CreateOperationRequest(BaseModel):
     )
     operation_request_json: str = Field(
         description=(
-            "JSON-encoded operation request containing permission_id and optional parameters. "
-            "The operation type and parameters are defined in the grant file referenced by "
-            "the blockchain permission."
+            "JSON-encoded operation request. Must contain permission_id. "
+            "Can optionally include operation (for verification) and parameters (runtime values). "
+            "Runtime parameters are merged with grant parameters (grant takes precedence)."
         ),
-        example='{"permission_id": 1024}',
+        example='{"permission_id": 1024, "parameters": {"goal": "analyze trends"}}',
         min_length=2,
         max_length=100000
     )
+
+    @validator('operation_request_json')
+    def validate_request_json(cls, v):
+        """Validate operation_request_json structure."""
+        try:
+            data = json.loads(v)
+            if not isinstance(data, dict):
+                raise ValueError("operation_request_json must be a JSON object")
+            if 'permission_id' not in data:
+                raise ValueError("operation_request_json must contain 'permission_id'")
+            return v
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in operation_request_json: {e}")
     
     class Config:
         json_schema_extra = {

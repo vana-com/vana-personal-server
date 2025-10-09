@@ -48,8 +48,18 @@ class OperationsService:
         logger.info(f"[SERVICE] Starting operation creation [RequestID: {request_id}]")
         
         try:
-            request = PersonalServerRequest(**json.loads(request_json))
-            logger.info(f"[SERVICE] Parsed request - Permission ID: {request.permission_id} [RequestID: {request_id}]")
+            request_data = json.loads(request_json)
+            request = PersonalServerRequest(**request_data)
+
+            # Extract optional runtime parameters and operation
+            runtime_parameters = request_data.get('parameters')
+            runtime_operation = request_data.get('operation')
+
+            logger.info(
+                f"[SERVICE] Parsed request - Permission ID: {request.permission_id}, "
+                f"Runtime operation: {runtime_operation}, "
+                f"Has runtime parameters: {runtime_parameters is not None} [RequestID: {request_id}]"
+            )
         except (json.JSONDecodeError, TypeError) as e:
             logger.error(f"[SERVICE] JSON parsing failed: {str(e)} [RequestID: {request_id}]")
             logger.error(f"[SERVICE] Raw request JSON: {request_json} [RequestID: {request_id}]")
@@ -153,6 +163,27 @@ class OperationsService:
         except Exception as e:
             logger.error(f"[SERVICE] Response format validation failed: {str(e)} [RequestID: {request_id}]")
             raise ValidationError(f"Invalid response_format in grant file: {str(e)}")
+
+        # Validate operation match and merge parameters
+        from services.parameter_merge import validate_operation_match, merge_parameters
+
+        try:
+            # Validate operation if provided in request
+            validate_operation_match(grant_file.operation, runtime_operation)
+
+            # Merge runtime parameters with grant parameters (grant takes precedence)
+            if runtime_parameters:
+                merged_params = merge_parameters(grant_file.parameters, runtime_parameters)
+                logger.info(
+                    f"[SERVICE] Merged parameters - Grant: {grant_file.parameters}, "
+                    f"Runtime: {runtime_parameters}, Merged: {merged_params} [RequestID: {request_id}]"
+                )
+                grant_file.parameters = merged_params
+            else:
+                logger.info(f"[SERVICE] No runtime parameters provided, using grant parameters: {grant_file.parameters} [RequestID: {request_id}]")
+        except ValueError as e:
+            logger.error(f"[SERVICE] Parameter merge failed: {str(e)} [RequestID: {request_id}]")
+            raise ValidationError(f"Parameter validation failed: {str(e)}")
 
         try:
             logger.info(f"[SERVICE] Deriving server keys for grantor: {permission.grantor} [RequestID: {request_id}]")

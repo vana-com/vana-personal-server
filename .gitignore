@@ -57,3 +57,4 @@ htmlcov/
 # Documentation builds
 docs/_build/
 docs/.doctrees/
+node_modules
