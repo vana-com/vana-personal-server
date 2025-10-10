@@ -202,6 +202,12 @@ class OperationsService:
         logger.info(f"[SERVICE] Starting file content decryption for {len(files_metadata)} files [RequestID: {request_id}]")
         files_content = self._decrypt_files_content(files_metadata, server_private_key, request_id)
 
+        # Apply JSONPath filters if specified in grant parameters
+        filters = grant_file.parameters.get("filters")
+        if filters:
+            logger.info(f"[SERVICE] Applying JSONPath filters to {len(filters)} file(s) [RequestID: {request_id}]")
+            files_content = self._apply_jsonpath_filters(files_metadata, files_content, filters, request_id)
+
         # Create operation context with both addresses
         operation_id = f"{grant_file.operation}_{int(time.time() * 1000)}"
         context = OperationContext(
@@ -424,5 +430,83 @@ class OperationsService:
         if format_type not in valid_types:
             logger.error(f"[SERVICE] Invalid response_format type: {format_type}, valid types: {valid_types} [RequestID: {request_id}]")
             raise ValidationError(f"response_format.type must be one of {valid_types}, got '{format_type}'")
-        
+
         logger.info(f"[SERVICE] Response format validation successful: {response_format} [RequestID: {request_id}]")
+
+    def _apply_jsonpath_filters(
+        self, files_metadata: list[FileMetadata], files_content: list[str], filters: dict, request_id: str = None
+    ) -> list[str]:
+        """Apply JSONPath filters to file content.
+
+        Args:
+            files_metadata: List of file metadata objects
+            files_content: List of decrypted file content strings
+            filters: Dictionary mapping file_id (as string) to JSONPath expression
+            request_id: Request ID for logging
+
+        Returns:
+            List of filtered file content (same order as input)
+        """
+        from jsonpath_ng import parse
+
+        if not request_id:
+            request_id = f"filter_{int(__import__('time').time() * 1000)}"
+
+        filtered_content = []
+
+        for i, (metadata, content) in enumerate(zip(files_metadata, files_content)):
+            file_id_str = str(metadata.file_id)
+
+            # Check if this file has a filter
+            if file_id_str not in filters:
+                logger.debug(f"[SERVICE] No filter for file {file_id_str}, using original content [RequestID: {request_id}]")
+                filtered_content.append(content)
+                continue
+
+            jsonpath_expr = filters[file_id_str]
+            logger.info(f"[SERVICE] Applying JSONPath filter to file {file_id_str}: {jsonpath_expr} [RequestID: {request_id}]")
+
+            # Try to parse content as JSON
+            try:
+                file_data = json.loads(content)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    f"[SERVICE] File {file_id_str} is not valid JSON, skipping filter. "
+                    f"Error: {str(e)} [RequestID: {request_id}]"
+                )
+                filtered_content.append(content)
+                continue
+
+            # Apply the JSONPath filter
+            try:
+                jsonpath = parse(jsonpath_expr)
+                matches = jsonpath.find(file_data)
+
+                if not matches:
+                    logger.warning(
+                        f"[SERVICE] JSONPath filter returned no matches for file {file_id_str}, "
+                        f"using empty result [RequestID: {request_id}]"
+                    )
+                    filtered_result = []
+                elif len(matches) == 1:
+                    # Single match - return the value directly
+                    filtered_result = matches[0].value
+                else:
+                    # Multiple matches - return as array
+                    filtered_result = [match.value for match in matches]
+
+                filtered_json = json.dumps(filtered_result, indent=2)
+                logger.info(
+                    f"[SERVICE] Filter applied successfully to file {file_id_str}. "
+                    f"Original size: {len(content)}, Filtered size: {len(filtered_json)} [RequestID: {request_id}]"
+                )
+                filtered_content.append(filtered_json)
+
+            except Exception as e:
+                logger.warning(
+                    f"[SERVICE] Failed to apply JSONPath filter to file {file_id_str}: {str(e)}. "
+                    f"Using original content [RequestID: {request_id}]"
+                )
+                filtered_content.append(content)
+
+        return filtered_content

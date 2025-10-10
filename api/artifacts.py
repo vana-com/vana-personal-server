@@ -91,20 +91,25 @@ async def download_artifact(
         except (AuthenticationError, ValueError) as e:
             logger.error(f"[ARTIFACTS] Authentication failed: {e}")
             raise HTTPException(status_code=401, detail="Authentication failed")
-        
+
         # Get operation metadata to verify grantee access
         storage_service = ArtifactStorageService()
         metadata = await storage_service.get_metadata(operation_id)
-        
+
         if not metadata:
             logger.warning(f"[ARTIFACTS] Operation not found: {operation_id}")
             raise HTTPException(status_code=404, detail="Operation not found")
-        
-        # Verify the recovered address matches the original grantee
-        expected_grantee = metadata.get("grantee_address")
-        if not signature_auth.verify_grantee_access(recovered_address, expected_grantee):
-            raise HTTPException(status_code=403, detail="Access denied - not the authorized grantee")
-        
+
+        # Verify the recovered address matches either the grantor (user) or grantee (app)
+        grantor_address = metadata.get("grantor_address")
+        grantee_address = metadata.get("grantee_address")
+
+        is_grantor = signature_auth.verify_grantee_access(recovered_address, grantor_address)
+        is_grantee = signature_auth.verify_grantee_access(recovered_address, grantee_address)
+
+        if not (is_grantor or is_grantee):
+            raise HTTPException(status_code=403, detail="Access denied - not authorized grantor or grantee")
+
         # Download and decrypt the artifact
         artifact_data = await storage_service.get_artifact(operation_id, artifact_path)
         
@@ -222,16 +227,21 @@ async def list_artifacts(
         # Get operation metadata to verify grantee access
         storage_service = ArtifactStorageService()
         metadata = await storage_service.get_metadata(operation_id)
-        
+
         if not metadata:
             logger.warning(f"[ARTIFACTS] Operation not found: {operation_id}")
             raise HTTPException(status_code=404, detail="Operation not found")
-        
-        # Verify the recovered address matches the original grantee
-        expected_grantee = metadata.get("grantee_address")
-        if not signature_auth.verify_grantee_access(recovered_address, expected_grantee):
-            raise HTTPException(status_code=403, detail="Access denied - not the authorized grantee")
-        
+
+        # Verify the recovered address matches either the grantor (user) or grantee (app)
+        grantor_address = metadata.get("grantor_address")
+        grantee_address = metadata.get("grantee_address")
+
+        is_grantor = signature_auth.verify_grantee_access(recovered_address, grantor_address)
+        is_grantee = signature_auth.verify_grantee_access(recovered_address, grantee_address)
+
+        if not (is_grantor or is_grantee):
+            raise HTTPException(status_code=403, detail="Access denied - not authorized grantor or grantee")
+
         artifacts = await storage_service.list_artifacts(operation_id)
 
         return ArtifactListResponse(

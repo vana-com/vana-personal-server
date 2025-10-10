@@ -99,6 +99,11 @@ async def create_operation(
         Operations are processed asynchronously. Use the returned operation_id
         with GET /operations/{operation_id} to poll for results.
         Average processing time: 2-10 seconds for LLM inference.
+
+    Supported Operations:
+        - llm_inference: LLM text generation with user data context
+        - prompt_gemini_agent: Gemini-based agentic task execution
+        - prompt_qwen_agent: Qwen-based agentic task execution
     """
     # Generate unique request ID for tracking
     request_id = f"req_{int(time.time() * 1000)}_{id(request)}"

@@ -436,22 +436,11 @@ class ArtifactStorageService:
             return None
     
     def _guess_content_type(self, filename: str) -> str:
-        """Guess content type from filename."""
-        ext = Path(filename).suffix.lower()
-        content_types = {
-            '.md': 'text/markdown',
-            '.txt': 'text/plain',
-            '.py': 'text/x-python',
-            '.js': 'text/javascript',
-            '.json': 'application/json',
-            '.html': 'text/html',
-            '.css': 'text/css',
-            '.pdf': 'application/pdf',
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-        }
-        return content_types.get(ext, 'application/octet-stream')
+        """Guess content type from filename using Python's mimetypes library."""
+        import mimetypes
+
+        content_type, _ = mimetypes.guess_type(filename)
+        return content_type if content_type else 'application/octet-stream'
     
     async def _upload_to_r2(self, object_key: str, content: bytes):
         """Upload content to Cloudflare R2."""

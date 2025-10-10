@@ -420,38 +420,55 @@ class BaseAgentProvider(BaseCompute, ABC):
     
     
     async def _process_artifacts(
-        self, 
-        workspace: str, 
+        self,
+        workspace: str,
         operation_id: str,
         context: OperationContext,
         result: Dict
     ) -> List[Dict]:
         """Process and store artifacts from Docker agent execution."""
+        import mimetypes
+
         artifacts_metadata = []
-        
+
         # Docker runner already collected artifacts and included them in result
         artifacts = result.get("artifacts", [])
-        
+
         # Collect all artifacts to store in a single batch
         artifacts_to_store = []
-        
+
         for artifact in artifacts:
             content = artifact.get("content")
             filename = artifact.get("name")
-            
+
             if content and filename:
                 artifacts_to_store.append({
                     "name": filename,
                     "content": content
                 })
-                
-                # Add metadata for result
+
+                # Strip ./out/ prefix from path if present
+                clean_path = filename
+                if clean_path.startswith("./out/"):
+                    clean_path = clean_path[6:]  # Remove "./out/"
+                elif clean_path.startswith("out/"):
+                    clean_path = clean_path[4:]  # Remove "out/"
+
+                # Determine content type using mimetypes library
+                content_type, _ = mimetypes.guess_type(clean_path)
+                if not content_type:
+                    content_type = "application/octet-stream"  # Default for unknown types
+
+                # Calculate size from actual content
+                size = len(content) if isinstance(content, bytes) else len(content.encode('utf-8'))
+
+                # Add structured metadata for API response
                 artifacts_metadata.append({
-                    "name": filename,
-                    "size": artifact.get("size", len(content)),
-                    "artifact_path": filename
+                    "path": clean_path,
+                    "size": size,
+                    "content_type": content_type
                 })
-        
+
         # Store all artifacts at once with a single encryption key
         if artifacts_to_store:
             await self.artifact_storage.store_artifacts(
@@ -460,5 +477,5 @@ class BaseAgentProvider(BaseCompute, ABC):
                 grantor_address=context.grantor,
                 grantee_address=context.grantee
             )
-        
+
         return artifacts_metadata
