@@ -42,9 +42,63 @@ class OperationsService:
         self.data_portability_grantees = DataPortabilityGrantees(chain, self.web3)
 
     async def create(self, request_json: str, signature: str, request_id: str = None) -> ExecuteResponse:
+        """
+        Execute an operation on user data with protocol-level security and filtering.
+
+        This is the central entry point for all operations on the personal server. It enforces
+        the complete Vana protocol including signature validation, blockchain permission checks,
+        data decryption, and JSONPath filtering before routing to operation-specific compute providers.
+
+        Processing Pipeline:
+            1. Signature Validation: Verify app signature matches on-chain grantee
+            2. Permission Verification: Fetch and validate blockchain permission
+            3. Grant File Retrieval: Download and validate IPFS grant file
+            4. Data Decryption: Fetch and decrypt user files with server keys
+            5. JSONPath Filtering: Apply protocol-level filters (GLOBAL - all operations)
+            6. Operation Routing: Dispatch to appropriate compute provider
+
+        The JSONPath filtering step (step 5) is operation-agnostic and runs before any compute
+        provider receives data. This ensures consistent data minimization across all operations
+        (llm_inference, prompt_gemini_agent, prompt_qwen_agent, custom providers).
+
+        Args:
+            request_json: JSON-encoded operation request containing permission_id and optional
+                runtime parameters. Must be the exact string that was signed.
+            signature: ECDSA signature over request_json from app's private key (130 hex chars)
+            request_id: Optional request identifier for distributed tracing and log correlation
+
+        Returns:
+            ExecuteResponse containing operation ID, creation timestamp, and initial status.
+            Clients poll GET /operations/{id} to retrieve results.
+
+        Raises:
+            ValidationError: Invalid request format, missing parameters, or constraint violations
+            AuthenticationError: Signature verification failed or address mismatch
+            BlockchainError: Permission fetch failed or blockchain connectivity issues
+            NotFoundError: Permission, grantee, or grant file not found
+            GrantValidationError: Grant file signature invalid or grantee mismatch
+            FileAccessError: Failed to download or access user file
+            DecryptionError: Failed to decrypt file content with server keys
+            OperationError: Server key derivation or operation context creation failed
+            ComputeError: Compute provider execution failed
+
+        Note:
+            This method processes ALL operation types through the same validation and
+            filtering pipeline. Operation-specific behavior is determined by the grant file's
+            operation field and handled by registered compute providers.
+
+        Example:
+            Standard flow with runtime parameters:
+            >>> result = await service.create(
+            ...     request_json='{"permission_id": 1024, "parameters": {"temperature": 0.7}}',
+            ...     signature="0x3cffa64411a02d4a257663848df70fd445f513ed...",
+            ...     request_id="req_1234567890_139748"
+            ... )
+            >>> print(result.id)  # "llm_inference_1728847392000"
+        """
         if not request_id:
             request_id = f"svc_req_{int(__import__('time').time() * 1000)}"
-            
+
         logger.info(f"[SERVICE] Starting operation creation [RequestID: {request_id}]")
         
         try:
@@ -202,7 +256,17 @@ class OperationsService:
         logger.info(f"[SERVICE] Starting file content decryption for {len(files_metadata)} files [RequestID: {request_id}]")
         files_content = self._decrypt_files_content(files_metadata, server_private_key, request_id)
 
-        # Apply JSONPath filters if specified in grant parameters
+        # Apply JSONPath filters if specified in grant parameters.
+        # NOTE: This is PROTOCOL-LEVEL filtering that applies to ALL operations (llm_inference,
+        # prompt_gemini_agent, prompt_qwen_agent, custom providers). Filtering happens before any
+        # compute provider receives data, ensuring consistent data minimization and privacy
+        # guarantees. Compute providers cannot access filtered-out fields.
+        #
+        # The filters parameter is a dictionary mapping file_id (as string) to JSONPath expression.
+        # Example: {"1891942": "$.publicData.linkedinUserData['hero','about','experience']"}
+        #
+        # This design enforces data minimization at the protocol layer rather than requiring each
+        # operation to implement filtering, providing stronger security and privacy guarantees.
         filters = grant_file.parameters.get("filters")
         if filters:
             logger.info(f"[SERVICE] Applying JSONPath filters to {len(filters)} file(s) [RequestID: {request_id}]")
@@ -436,16 +500,55 @@ class OperationsService:
     def _apply_jsonpath_filters(
         self, files_metadata: list[FileMetadata], files_content: list[str], filters: dict, request_id: str = None
     ) -> list[str]:
-        """Apply JSONPath filters to file content.
+        """
+        Apply JSONPath filters to file content for protocol-level data minimization.
+
+        This is a PROTOCOL-LEVEL operation that executes before any compute provider receives
+        data. Filtering is operation-agnostic and applies uniformly to all operations
+        (llm_inference, prompt_gemini_agent, prompt_qwen_agent, custom providers).
+
+        The method transforms raw decrypted file content by applying JSONPath expressions
+        specified in the grant file's parameters. This enables privacy-preserving computation
+        where only necessary data fields are exposed to operations, enforcing the principle
+        of data minimization at the protocol layer.
+
+        Processing:
+            1. Iterate through each file with its metadata
+            2. Skip files without corresponding filter (use original content)
+            3. Validate file content is valid JSON
+            4. Parse and execute JSONPath expression against file data
+            5. Serialize filtered result back to JSON string
+            6. Fall back to original content on any parsing or execution errors
+
+        Filter Behavior:
+            - Single match: Returns the matched value directly
+            - Multiple matches: Returns array of matched values
+            - No matches: Returns empty array
+            - Parse error: Returns original content with warning logged
+            - Non-JSON file: Returns original content with warning logged
 
         Args:
-            files_metadata: List of file metadata objects
-            files_content: List of decrypted file content strings
-            filters: Dictionary mapping file_id (as string) to JSONPath expression
-            request_id: Request ID for logging
+            files_metadata: List of file metadata objects containing file_id for matching
+            files_content: List of decrypted file content strings (same order as metadata)
+            filters: Dictionary mapping file_id (as string key) to JSONPath expression string.
+                Example: {"1891942": "$.publicData.linkedinUserData['hero','about']"}
+            request_id: Optional request identifier for log correlation
 
         Returns:
-            List of filtered file content (same order as input)
+            List of filtered file content strings maintaining original order. Unfiltered
+            files or files with filter errors return original content unchanged.
+
+        Note:
+            This method enforces data minimization at the protocol layer, not at the
+            operation layer. Compute providers receive pre-filtered data and have no
+            ability to access filtered-out fields, ensuring privacy guarantees.
+
+        Example:
+            >>> metadata = [FileMetadata(file_id=123, ...)]
+            >>> content = ['{"user": {"name": "Alice", "ssn": "123-45-6789"}}']
+            >>> filters = {"123": "$.user.name"}
+            >>> result = service._apply_jsonpath_filters(metadata, content, filters)
+            >>> print(result[0])  # '"Alice"'
         """
         from jsonpath_ng import parse
 
