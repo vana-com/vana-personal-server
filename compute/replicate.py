@@ -138,6 +138,10 @@ class ReplicateLlmInference(BaseCompute):
             logger.info("Modified prompt to enforce JSON output mode")
 
         try:
+            # Log operation-to-prediction mapping for debugging/monitoring
+            # This enables tracing personal server operations to Replicate dashboard
+            logger.info(f"Creating Replicate prediction for operation_id={context.operation_id}")
+
             # Create prediction with potentially modified prompt
             prediction = self.client.predictions.create(
                 model=self.model_name,
@@ -149,6 +153,12 @@ class ReplicateLlmInference(BaseCompute):
                     # "frequency_penalty": 0,  # Optional: uncomment if needed (default: 0)
                     # "top_p": 1,  # Optional: uncomment if needed (default: 1)
                 }
+            )
+
+            # Log the mapping for traceability (Replicate API doesn't support custom metadata)
+            logger.info(
+                f"Replicate prediction created: "
+                f"operation_id={context.operation_id} -> prediction_id={prediction.id}"
             )
 
             # Store response format for this prediction if provided
