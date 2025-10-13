@@ -60,18 +60,20 @@ class SignatureAuth:
     def verify_grantee_access(self, recovered_address: str, expected_grantee: str) -> bool:
         """
         Verify that the recovered address matches the expected grantee.
-        
+
         Args:
             recovered_address: Address recovered from signature
             expected_grantee: The expected grantee address
-            
+
         Returns:
             True if addresses match, False otherwise
         """
         if recovered_address.lower() != expected_grantee.lower():
-            logger.error(f"[AUTH] Address mismatch: recovered {recovered_address}, expected {expected_grantee}")
+            # Use debug level since this is often called multiple times (grantor + grantee checks)
+            # and a mismatch is not necessarily an error condition
+            logger.debug(f"[AUTH] Address mismatch: recovered {recovered_address}, expected {expected_grantee}")
             return False
-        
+
         logger.info(f"[AUTH] Grantee access verified: {recovered_address}")
         return True
 

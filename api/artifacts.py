@@ -252,9 +252,20 @@ async def list_artifacts(
 
         artifacts = await storage_service.list_artifacts(operation_id)
 
+        # Transform metadata format: rename "name" to "path" for API schema compatibility
+        # The storage layer uses "name" but the API schema uses "path" (more accurate for hierarchical files)
+        transformed_artifacts = []
+        for artifact in artifacts:
+            transformed = {
+                "path": artifact.get("name", artifact.get("path", "")),  # Fallback for old/new formats
+                "size": artifact["size"],
+                "content_type": artifact["content_type"]
+            }
+            transformed_artifacts.append(transformed)
+
         return ArtifactListResponse(
             operation_id=operation_id,
-            artifacts=artifacts
+            artifacts=transformed_artifacts
         )
         
     except VanaAPIError as e:
