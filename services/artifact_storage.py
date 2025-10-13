@@ -29,22 +29,22 @@ logger = logging.getLogger(__name__)
 
 class ArtifactMetadata:
     """Metadata for a stored artifact."""
-    
-    def __init__(self, name: str, size: int, content_type: str, checksum: str, created_at: str):
-        self.name = name
+
+    def __init__(self, path: str, size: int, content_type: str, checksum: str, created_at: str):
+        self.path = path
         self.size = size
         self.content_type = content_type
         self.checksum = checksum
         self.created_at = created_at
-    
+
     def to_dict(self) -> Dict:
         return {
-            "name": self.name,
+            "path": self.path,
             "size": self.size,
             "content_type": self.content_type,
             "checksum": self.checksum,
             "created_at": self.created_at,
-            "download_url": f"/api/v1/operations/artifacts/{self.name}"
+            "download_url": f"/api/v1/operations/artifacts/{self.path}"
         }
 
 
@@ -149,16 +149,19 @@ class ArtifactStorageService:
     ) -> Dict:
         """
         Store artifacts with encryption and metadata.
-        
+
         Args:
             operation_id: Unique operation identifier
-            artifacts: List of artifacts with 'name' and 'content' keys
+            artifacts: List of artifacts with 'path' and 'content' keys
             grantor_address: Address of the data owner (for encryption)
             grantee_address: Address of the grantee (for access control)
             expires_at: When artifacts should expire
-        
+
         Returns:
             Dictionary with artifact metadata
+
+        Note:
+            Supports legacy 'name' field for backwards compatibility.
         """
         if expires_at is None:
             expires_at = datetime.utcnow() + timedelta(days=7)
@@ -172,47 +175,52 @@ class ArtifactStorageService:
         
         for artifact in artifacts:
             try:
-                artifact_name = artifact["name"]
+                # Support both "path" (new) and "name" (legacy) for backwards compatibility
+                artifact_path = artifact.get("path") or artifact.get("name")
+                if not artifact_path:
+                    logger.error(f"Artifact missing both 'path' and 'name' fields: {artifact}")
+                    continue
+
                 artifact_content = artifact["content"]
                 
                 if isinstance(artifact_content, str):
                     artifact_content = artifact_content.encode('utf-8')
                 
                 # Encrypt the artifact
-                logger.info(f"Encrypting artifact {artifact_name} with key first 10 bytes: {encryption_key[:10]}")
+                logger.info(f"Encrypting artifact {artifact_path} with key first 10 bytes: {encryption_key[:10]}")
                 encrypted_content = self._encrypt_content(artifact_content, encryption_key)
-                
+
                 # Determine content type
-                content_type = self._guess_content_type(artifact_name)
-                
+                content_type = self._guess_content_type(artifact_path)
+
                 # Calculate checksum of original content
                 import hashlib
                 checksum = hashlib.sha256(artifact_content).hexdigest()
-                
+
                 # Store in R2 (or local fallback)
-                object_key = self._get_object_key(operation_id, artifact_name)
-                
+                object_key = self._get_object_key(operation_id, artifact_path)
+
                 if self.r2_client:
                     await self._upload_to_r2(object_key, encrypted_content)
                 else:
                     await self._store_locally(object_key, encrypted_content)
-                
+
                 # Create artifact metadata
                 artifact_metadata = ArtifactMetadata(
-                    name=artifact_name,
+                    path=artifact_path,
                     size=len(artifact_content),  # Original size
                     content_type=content_type,
                     checksum=checksum,
                     created_at=datetime.utcnow().isoformat()
                 )
-                
+
                 stored_artifacts.append(artifact_metadata.to_dict())
                 total_size += len(artifact_content)
-                
-                logger.info(f"Stored artifact: {artifact_name} ({len(artifact_content)} bytes)")
+
+                logger.info(f"Stored artifact: {artifact_path} ({len(artifact_content)} bytes)")
                 
             except Exception as e:
-                logger.error(f"Failed to store artifact {artifact.get('name', 'unknown')}: {e}")
+                logger.error(f"Failed to store artifact {artifact.get('path') or artifact.get('name', 'unknown')}: {e}")
                 # Continue with other artifacts
         
         # Encrypt the symmetric key using ECIES with grantor's server's public key

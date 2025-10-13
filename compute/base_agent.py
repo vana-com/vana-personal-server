@@ -442,17 +442,17 @@ class BaseAgentProvider(BaseCompute, ABC):
             filename = artifact.get("name")
 
             if content and filename:
-                artifacts_to_store.append({
-                    "name": filename,
-                    "content": content
-                })
-
-                # Strip ./out/ prefix from path if present
+                # Strip ./out/ prefix if present (normalize paths)
                 clean_path = filename
                 if clean_path.startswith("./out/"):
                     clean_path = clean_path[6:]  # Remove "./out/"
                 elif clean_path.startswith("out/"):
                     clean_path = clean_path[4:]  # Remove "out/"
+
+                artifacts_to_store.append({
+                    "path": clean_path,  # Use "path" to match API schema
+                    "content": content
+                })
 
                 # Determine content type using mimetypes library
                 content_type, _ = mimetypes.guess_type(clean_path)
