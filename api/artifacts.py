@@ -54,8 +54,8 @@ async def download_artifact(
     """
     Download an artifact file with grantee authentication.
 
-    Validates that the requesting app (grantee) is the same entity that created
-    the operation. Downloads and decrypts the artifact from storage.
+    Validates that the requesting app (grantee) or user (grantor) is authorized
+    to access this operation's artifacts. Downloads and decrypts the artifact from storage.
 
     Args:
         download_request: Download request with operation_id, artifact_path, and signature
@@ -66,22 +66,26 @@ async def download_artifact(
 
     Raises:
         HTTPException(401): Signature verification failed
-        HTTPException(403): Requester is not the authorized grantee
+        HTTPException(403): Requester is not authorized for this operation
         HTTPException(404): Operation or artifact not found
         HTTPException(500): Storage service error
 
     Note:
         Artifacts are cached for 1 hour. Content type is determined from file extension.
-        Signature must be over JSON: {"operation_id":"...", "artifact_path":"..."}
+        Signature must be over JSON: {"operation_id":"..."}
+
+        The signature scheme is simplified - clients sign only the operation_id,
+        not individual artifact paths. This allows a single signature to be reused
+        for listing and downloading all artifacts of an operation.
     """
     try:
         operation_id = download_request.operation_id
         artifact_path = download_request.artifact_path
-        
+
         logger.info(f"[ARTIFACTS] Download request: {operation_id}/{artifact_path}")
-        
-        # Create request data for signature verification
-        request_data = f'{{"operation_id":"{operation_id}","artifact_path":"{artifact_path}"}}'
+
+        # Create request data for signature verification (simplified scheme)
+        request_data = f'{{"operation_id":"{operation_id}"}}'
         
         # Verify signature and recover grantee address (with mock mode support)
         try:
@@ -202,18 +206,22 @@ async def list_artifacts(
 
     Raises:
         HTTPException(401): Signature verification failed
-        HTTPException(403): Requester is not the authorized grantee
+        HTTPException(403): Requester is not authorized for this operation
         HTTPException(404): Operation not found
         HTTPException(500): Storage service error
 
     Note:
-        Signature must be over JSON: {"operation_id":"...", "action":"list"}
+        Signature must be over JSON: {"operation_id":"..."}
+
+        The signature scheme is simplified - clients sign only the operation_id.
+        This allows the same signature to be reused for both listing and downloading
+        artifacts, simplifying client implementation.
     """
     try:
         logger.info(f"[ARTIFACTS] List request: {operation_id}")
-        
-        # Create request data for signature verification  
-        request_data = f'{{"operation_id":"{operation_id}","action":"list"}}'
+
+        # Create request data for signature verification (simplified scheme)
+        request_data = f'{{"operation_id":"{operation_id}"}}'
         
         # Verify signature and recover grantee address (with mock mode support)
         try:
