@@ -5,7 +5,7 @@ from typing import Optional, Annotated
 from services.artifact_storage import ArtifactStorageService
 from domain.exceptions import VanaAPIError, AuthenticationError
 from utils.auth import signature_auth, mock_mode_auth
-from api.schemas import ArtifactDownloadRequest, ArtifactListResponse, ErrorResponse
+from api.schemas import ArtifactDownloadRequest, ArtifactListRequest, ArtifactListResponse, ErrorResponse
 
 router = APIRouter(tags=["artifacts"])
 logger = logging.getLogger(__name__)
@@ -187,7 +187,7 @@ async def download_artifact(
 )
 async def list_artifacts(
     operation_id: str,
-    list_request: ArtifactDownloadRequest,
+    list_request: ArtifactListRequest,
     request: Request
 ) -> ArtifactListResponse:
     """

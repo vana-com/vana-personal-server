@@ -305,6 +305,26 @@ class ArtifactDownloadRequest(BaseModel):
             }
         }
 
+class ArtifactListRequest(BaseModel):
+    """Request model for listing artifacts (no artifact_path needed)."""
+    operation_id: str = Field(
+        description="Unique operation identifier",
+        example="cm4xp9qkw0001qj0g8xqg8xqg"
+    )
+    signature: str = Field(
+        description="Ethereum signature of the request for authentication",
+        pattern="^0x[a-fA-F0-9]{130}$",
+        example="0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "operation_id": "cm4xp9qkw0001qj0g8xqg8xqg",
+                "signature": "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+            }
+        }
+
 class ArtifactInfo(BaseModel):
     """Information about a single artifact file."""
     path: str = Field(
