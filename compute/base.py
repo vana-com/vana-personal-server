@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 from domain.entities import GrantFile
+from domain.operation_context import OperationContext
 
 @dataclass
 class ExecuteResponse:
@@ -16,18 +17,19 @@ class GetResponse:
     status: str
     started_at: str | None = None
     finished_at: str | None = None
-    result: str | None = None
+    result: Dict[str, Any] | None = None
 
 class BaseCompute(ABC):
     """Base interface for all compute providers."""
-    
+
     @abstractmethod
-    def execute(self, grant_file: GrantFile, files_content: list[str]) -> ExecuteResponse:
+    async def execute(self, grant_file: GrantFile, files_content: list[str], context: OperationContext) -> ExecuteResponse:
         """Create a new prediction/computation job based on the grant file and files content.
-        
+
         Args:
             grant_file: The grant file containing operation parameters (including response_format if applicable)
             files_content: List of file contents to process
+            context: Operation context with grantor/grantee information
         """
         pass
     

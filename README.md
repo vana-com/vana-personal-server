@@ -1,5 +1,8 @@
 # Vana Personal-Server API
 
+[![semantic-release: conventionalcommits](https://img.shields.io/badge/semantic--release-conventionalcommits-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
+[![Release](https://github.com/vana-com/vana-personal-server/actions/workflows/semantic-release.yml/badge.svg)](https://github.com/vana-com/vana-personal-server/actions/workflows/semantic-release.yml)
+
 ⚠️ **UNDER HEAVY DEVELOPMENT** ⚠️  
 This project is in active development and may contain security vulnerabilities or breaking changes. 
 Use at your own risk in production environments.
@@ -13,6 +16,7 @@ integrating with various compute providers and supporting encrypted data process
 - **Secure Compute**: Execute operations on private data with cryptographic guarantees
 - **Blockchain Integration**: Data permissions managed through smart contracts
 - **Multiple Compute Providers**: Support for Replicate and other compute services
+- **AI Agents (Experimental)**: Qwen and Gemini agent providers for agentic workflows
 - **Encrypted Data Processing**: Handle encrypted files with proper decryption
 - **Identity Management**: Derive server identities from user addresses
 - **IPFS Integration**: Fetch data grants from IPFS
@@ -47,30 +51,25 @@ poetry run uvicorn app:app --reload --host 0.0.0.0 --port 8000
 
 The server will be available at `http://localhost:8000` with automatic OpenAPI docs at `http://localhost:8000/docs`.
 
-### Docker Setup
+### Docker (Quick Start)
 
-1. **Build the Docker image:**
+**Simplest way - use pre-built image:**
 ```bash
-docker build -t vana-personal-server .
-```
+# 1. Create .env file with your secrets
+cat > .env << EOF
+REPLICATE_API_TOKEN=your_token_here
+WALLET_MNEMONIC=your_mnemonic_here
+CHAIN_ID=your_chain_id_here
+EOF
 
-2. **Run with Docker:**
-```bash
-docker run -p 8080:8080 \
-  -e REPLICATE_API_TOKEN=your_token_here \
-  -e WALLET_MNEMONIC=your_mnemonic_here \
-  -e CHAIN_ID=your_chain_id_here \
-  -e MNEMONIC_LANGUAGE=english \
-  vana-personal-server
-```
+# 2. Download docker-compose.yml
+curl -O https://raw.githubusercontent.com/vana-com/vana-personal-server/release-automation/docker-compose.yml
 
-The server will be available at `http://localhost:8080`.
-
-3. **Using Docker Compose (optional):**
-```bash
-# Create docker-compose.yml with your environment variables
+# 3. Start the server
 docker-compose up -d
 ```
+
+The server will be available at `http://localhost:8080/docs`
 
 ## API Reference
 
@@ -101,7 +100,9 @@ vana-personal-server/
 │   └── identity.py          # Identity derivation service
 ├── compute/                  # Compute provider integrations
 │   ├── base.py              # Abstract compute interface
-│   └── replicate.py         # Replicate API integration
+│   ├── replicate.py         # Replicate API integration
+│   ├── qwen_agent.py        # Qwen agent provider (experimental)
+│   └── gemini_agent.py      # Gemini agent provider (experimental)
 ├── onchain/                  # Blockchain integration
 │   ├── chain.py             # Blockchain connection management
 │   ├── data_registry.py     # Data registry contract interactions

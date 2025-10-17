@@ -1,16 +1,60 @@
 .env*
 !.env.example
-# Python cache
-venv
+
+# Python
+venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.cog/
-.cog/
+*.so
+.Python
+env/
+ENV/
+.venv
+dist/
+*.egg-info/
+build/
+
+# Poetry
+# Note: poetry.lock should be committed
 
 # IDE and AI assistant files
 .idea/
 .claude/
+.vscode/
+*.swp
+*.swo
+*~
 
+# GCP service account keys - CRITICAL
+*.json
+!package.json
+!tsconfig.json
+github-actions-*.json
+*-key.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Logs
+*.log
+
+# Agent workspaces (temporary files for agent execution)
+.agent_workspaces/
+.cog/
+
+# Container
 .devcontainer/
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+node_modules

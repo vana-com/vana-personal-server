@@ -1,7 +1,8 @@
-from typing import Annotated, Optional, Dict, Any, Literal
+from typing import Annotated, Optional, Dict, Any, Literal, List
 from pydantic import BaseModel, Field, BeforeValidator, validator
 from datetime import datetime
 import re
+import json
 
 def validate_evm_address(value: str) -> str:
     """
@@ -138,14 +139,27 @@ class CreateOperationRequest(BaseModel):
     )
     operation_request_json: str = Field(
         description=(
-            "JSON-encoded operation request containing permission_id and optional parameters. "
-            "The operation type and parameters are defined in the grant file referenced by "
-            "the blockchain permission."
+            "JSON-encoded operation request. Must contain permission_id. "
+            "Can optionally include operation (for verification) and parameters (runtime values). "
+            "Runtime parameters are merged with grant parameters (grant takes precedence)."
         ),
-        example='{"permission_id": 1024}',
+        example='{"permission_id": 1024, "parameters": {"goal": "analyze trends"}}',
         min_length=2,
         max_length=100000
     )
+
+    @validator('operation_request_json')
+    def validate_request_json(cls, v):
+        """Validate operation_request_json structure."""
+        try:
+            data = json.loads(v)
+            if not isinstance(data, dict):
+                raise ValueError("operation_request_json must be a JSON object")
+            if 'permission_id' not in data:
+                raise ValueError("operation_request_json must contain 'permission_id'")
+            return v
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in operation_request_json: {e}")
     
     class Config:
         json_schema_extra = {
@@ -208,17 +222,16 @@ class GetOperationResponse(BaseModel):
         description="ISO 8601 timestamp when operation completed (succeeded, failed, or canceled)",
         example="2024-01-01T00:00:05Z"
     )
-    result: Optional[str] = Field(
+    result: Optional[Dict[str, Any]] = Field(
         default=None,
         description=(
-            "Operation result data. Format depends on operation type. "
-            "For LLM inference: generated text. "
-            "For JSON mode: stringified JSON object."
+            "Operation result data as a dictionary. Format depends on operation type. "
+            "For LLM inference: {'output': 'generated text'} or parsed JSON object. "
+            "For JSON mode: parsed JSON object structure."
         ),
-        example="The analysis of your data indicates positive trends in engagement metrics...",
-        max_length=5000000  # 5MB limit
+        example={"output": "The analysis of your data indicates positive trends in engagement metrics..."}
     )
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -227,7 +240,7 @@ class GetOperationResponse(BaseModel):
                 "status": "succeeded",
                 "started_at": "2024-01-01T00:00:01Z",
                 "finished_at": "2024-01-01T00:00:05Z",
-                "result": "The analysis of your data indicates positive trends..."
+                "result": {"output": "The analysis of your data indicates positive trends..."}
             }
         }
 
@@ -255,7 +268,7 @@ class ErrorResponse(BaseModel):
         description="Specific field that caused the error, if applicable",
         example="app_signature"
     )
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -264,5 +277,101 @@ class ErrorResponse(BaseModel):
                 "error_code": "INVALID_SIGNATURE",
                 "field": "app_signature",
                 "hint": "Ensure signature is hex-encoded with 0x prefix"
+            }
+        }
+
+class ArtifactDownloadRequest(BaseModel):
+    """Request model for authenticated artifact downloads."""
+    operation_id: str = Field(
+        description="Unique operation identifier",
+        example="cm4xp9qkw0001qj0g8xqg8xqg"
+    )
+    artifact_path: str = Field(
+        description="Path to the artifact file to download",
+        example="outputs/result.json"
+    )
+    signature: str = Field(
+        description="Ethereum signature of the request for authentication",
+        pattern="^0x[a-fA-F0-9]{130}$",
+        example="0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "operation_id": "cm4xp9qkw0001qj0g8xqg8xqg",
+                "artifact_path": "outputs/result.json",
+                "signature": "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+            }
+        }
+
+class ArtifactListRequest(BaseModel):
+    """Request model for listing artifacts (no artifact_path needed)."""
+    operation_id: str = Field(
+        description="Unique operation identifier",
+        example="cm4xp9qkw0001qj0g8xqg8xqg"
+    )
+    signature: str = Field(
+        description="Ethereum signature of the request for authentication",
+        pattern="^0x[a-fA-F0-9]{130}$",
+        example="0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "operation_id": "cm4xp9qkw0001qj0g8xqg8xqg",
+                "signature": "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c"
+            }
+        }
+
+class ArtifactInfo(BaseModel):
+    """Information about a single artifact file."""
+    path: str = Field(
+        description="Relative path to the artifact file",
+        example="outputs/analysis.json"
+    )
+    size: int = Field(
+        description="File size in bytes",
+        example=4096
+    )
+    content_type: str = Field(
+        description="MIME type of the artifact",
+        example="application/json"
+    )
+
+class ArtifactListResponse(BaseModel):
+    """Response containing list of available artifacts for an operation."""
+    kind: Literal["ArtifactList"] = Field(
+        default="ArtifactList",
+        description="Resource type identifier for response routing",
+        example="ArtifactList"
+    )
+    operation_id: str = Field(
+        description="Unique operation identifier",
+        example="cm4xp9qkw0001qj0g8xqg8xqg"
+    )
+    artifacts: List[ArtifactInfo] = Field(
+        description="List of available artifacts for this operation",
+        default=[]
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "kind": "ArtifactList",
+                "operation_id": "cm4xp9qkw0001qj0g8xqg8xqg",
+                "artifacts": [
+                    {
+                        "path": "outputs/analysis.json",
+                        "size": 4096,
+                        "content_type": "application/json"
+                    },
+                    {
+                        "path": "outputs/report.md",
+                        "size": 2048,
+                        "content_type": "text/markdown"
+                    }
+                ]
             }
         }

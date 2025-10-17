@@ -1,9 +1,12 @@
 import json
 import logging
+import time
 
 from web3 import AsyncWeb3
 from compute.base import BaseCompute, ExecuteResponse, GetResponse
+from services.compute_registry import get_compute_registry
 from domain.entities import FileMetadata, GrantFile
+from domain.operation_context import OperationContext
 from domain.value_objects import PersonalServerRequest
 from eth_account.messages import encode_defunct
 from domain.exceptions import (
@@ -39,14 +42,78 @@ class OperationsService:
         self.data_portability_grantees = DataPortabilityGrantees(chain, self.web3)
 
     async def create(self, request_json: str, signature: str, request_id: str = None) -> ExecuteResponse:
+        """
+        Execute an operation on user data with protocol-level security and filtering.
+
+        This is the central entry point for all operations on the personal server. It enforces
+        the complete Vana protocol including signature validation, blockchain permission checks,
+        data decryption, and JSONPath filtering before routing to operation-specific compute providers.
+
+        Processing Pipeline:
+            1. Signature Validation: Verify app signature matches on-chain grantee
+            2. Permission Verification: Fetch and validate blockchain permission
+            3. Grant File Retrieval: Download and validate IPFS grant file
+            4. Data Decryption: Fetch and decrypt user files with server keys
+            5. JSONPath Filtering: Apply protocol-level filters (GLOBAL - all operations)
+            6. Operation Routing: Dispatch to appropriate compute provider
+
+        The JSONPath filtering step (step 5) is operation-agnostic and runs before any compute
+        provider receives data. This ensures consistent data minimization across all operations
+        (llm_inference, prompt_gemini_agent, prompt_qwen_agent, custom providers).
+
+        Args:
+            request_json: JSON-encoded operation request containing permission_id and optional
+                runtime parameters. Must be the exact string that was signed.
+            signature: ECDSA signature over request_json from app's private key (130 hex chars)
+            request_id: Optional request identifier for distributed tracing and log correlation
+
+        Returns:
+            ExecuteResponse containing operation ID, creation timestamp, and initial status.
+            Clients poll GET /operations/{id} to retrieve results.
+
+        Raises:
+            ValidationError: Invalid request format, missing parameters, or constraint violations
+            AuthenticationError: Signature verification failed or address mismatch
+            BlockchainError: Permission fetch failed or blockchain connectivity issues
+            NotFoundError: Permission, grantee, or grant file not found
+            GrantValidationError: Grant file signature invalid or grantee mismatch
+            FileAccessError: Failed to download or access user file
+            DecryptionError: Failed to decrypt file content with server keys
+            OperationError: Server key derivation or operation context creation failed
+            ComputeError: Compute provider execution failed
+
+        Note:
+            This method processes ALL operation types through the same validation and
+            filtering pipeline. Operation-specific behavior is determined by the grant file's
+            operation field and handled by registered compute providers.
+
+        Example:
+            Standard flow with runtime parameters:
+            >>> result = await service.create(
+            ...     request_json='{"permission_id": 1024, "parameters": {"temperature": 0.7}}',
+            ...     signature="0x3cffa64411a02d4a257663848df70fd445f513ed...",
+            ...     request_id="req_1234567890_139748"
+            ... )
+            >>> print(result.id)  # "llm_inference_1728847392000"
+        """
         if not request_id:
             request_id = f"svc_req_{int(__import__('time').time() * 1000)}"
-            
+
         logger.info(f"[SERVICE] Starting operation creation [RequestID: {request_id}]")
         
         try:
-            request = PersonalServerRequest(**json.loads(request_json))
-            logger.info(f"[SERVICE] Parsed request - Permission ID: {request.permission_id} [RequestID: {request_id}]")
+            request_data = json.loads(request_json)
+            request = PersonalServerRequest(**request_data)
+
+            # Extract optional runtime parameters and operation
+            runtime_parameters = request_data.get('parameters')
+            runtime_operation = request_data.get('operation')
+
+            logger.info(
+                f"[SERVICE] Parsed request - Permission ID: {request.permission_id}, "
+                f"Runtime operation: {runtime_operation}, "
+                f"Has runtime parameters: {runtime_parameters is not None} [RequestID: {request_id}]"
+            )
         except (json.JSONDecodeError, TypeError) as e:
             logger.error(f"[SERVICE] JSON parsing failed: {str(e)} [RequestID: {request_id}]")
             logger.error(f"[SERVICE] Raw request JSON: {request_json} [RequestID: {request_id}]")
@@ -151,6 +218,27 @@ class OperationsService:
             logger.error(f"[SERVICE] Response format validation failed: {str(e)} [RequestID: {request_id}]")
             raise ValidationError(f"Invalid response_format in grant file: {str(e)}")
 
+        # Validate operation match and merge parameters
+        from services.parameter_merge import validate_operation_match, merge_parameters
+
+        try:
+            # Validate operation if provided in request
+            validate_operation_match(grant_file.operation, runtime_operation)
+
+            # Merge runtime parameters with grant parameters (grant takes precedence)
+            if runtime_parameters:
+                merged_params = merge_parameters(grant_file.parameters, runtime_parameters)
+                logger.info(
+                    f"[SERVICE] Merged parameters - Grant: {grant_file.parameters}, "
+                    f"Runtime: {runtime_parameters}, Merged: {merged_params} [RequestID: {request_id}]"
+                )
+                grant_file.parameters = merged_params
+            else:
+                logger.info(f"[SERVICE] No runtime parameters provided, using grant parameters: {grant_file.parameters} [RequestID: {request_id}]")
+        except ValueError as e:
+            logger.error(f"[SERVICE] Parameter merge failed: {str(e)} [RequestID: {request_id}]")
+            raise ValidationError(f"Parameter validation failed: {str(e)}")
+
         try:
             logger.info(f"[SERVICE] Deriving server keys for grantor: {permission.grantor} [RequestID: {request_id}]")
             server_private_key, server_address = self._derive_user_server_keys(
@@ -168,9 +256,45 @@ class OperationsService:
         logger.info(f"[SERVICE] Starting file content decryption for {len(files_metadata)} files [RequestID: {request_id}]")
         files_content = self._decrypt_files_content(files_metadata, server_private_key, request_id)
 
+        # Apply JSONPath filters if specified in grant parameters.
+        # NOTE: This is PROTOCOL-LEVEL filtering that applies to ALL operations (llm_inference,
+        # prompt_gemini_agent, prompt_qwen_agent, custom providers). Filtering happens before any
+        # compute provider receives data, ensuring consistent data minimization and privacy
+        # guarantees. Compute providers cannot access filtered-out fields.
+        #
+        # The filters parameter is a dictionary mapping file_id (as string) to JSONPath expression.
+        # Example: {"1891942": "$.publicData.linkedinUserData['hero','about','experience']"}
+        #
+        # This design enforces data minimization at the protocol layer rather than requiring each
+        # operation to implement filtering, providing stronger security and privacy guarantees.
+        filters = grant_file.parameters.get("filters")
+        if filters:
+            logger.info(f"[SERVICE] Applying JSONPath filters to {len(filters)} file(s) [RequestID: {request_id}]")
+            files_content = self._apply_jsonpath_filters(files_metadata, files_content, filters, request_id)
+
+        # Create operation context with both addresses
+        operation_id = f"{grant_file.operation}_{int(time.time() * 1000)}"
+        context = OperationContext(
+            operation_id=operation_id,
+            grantor=permission.grantor,  # User who owns the data
+            grantee=app_address,  # App with delegated access
+            permission_id=request.permission_id
+        )
+        logger.info(f"[SERVICE] Created operation context - ID: {operation_id}, Grantor: {permission.grantor}, Grantee: {app_address} [RequestID: {request_id}]")
+
         try:
-            logger.info(f"[SERVICE] Executing compute operation with {len(files_content)} decrypted files [RequestID: {request_id}]")
-            result = self.compute.execute(grant_file, files_content)
+            # Use registry to get appropriate compute provider
+            registry = get_compute_registry()
+            provider = registry.get_provider(grant_file.operation)
+            
+            if provider:
+                logger.info(f"[SERVICE] Using registered provider for '{grant_file.operation}' [RequestID: {request_id}]")
+                result = await provider.execute(grant_file, files_content, context)
+            else:
+                # Fallback to default compute provider for unregistered operations
+                logger.info(f"[SERVICE] No registered provider for '{grant_file.operation}', using default [RequestID: {request_id}]")
+                result = await self.compute.execute(grant_file, files_content, context)
+
             logger.info(f"[SERVICE] Compute operation completed successfully, operation ID: {result.id} [RequestID: {request_id}]")
             return result
         except Exception as e:
@@ -178,10 +302,23 @@ class OperationsService:
             logger.error(f"[SERVICE] Grant file type: {type(grant_file)}, Files count: {len(files_content)} [RequestID: {request_id}]")
             raise ComputeError(f"Compute operation failed: {str(e)}")
 
-    def get(self, operation_id: str) -> GetResponse:
+    async def get(self, operation_id: str) -> GetResponse:
         logger.info(f"[SERVICE] Getting operation status for {operation_id}")
         try:
-            result = self.compute.get(operation_id)
+            # Check if this is an agent operation based on ID prefix
+            if operation_id.startswith("qwen_") or operation_id.startswith("prompt_qwen_agent"):
+                logger.info(f"[SERVICE] Routing get request to Qwen agent provider for {operation_id}")
+                from compute.qwen_agent import QwenCodeAgentProvider
+                agent_provider = QwenCodeAgentProvider()
+                result = await agent_provider.get(operation_id)
+            elif operation_id.startswith("gemini_") or operation_id.startswith("prompt_gemini_agent"):
+                logger.info(f"[SERVICE] Routing get request to Gemini agent provider for {operation_id}")
+                from compute.gemini_agent import GeminiAgentProvider
+                agent_provider = GeminiAgentProvider()
+                result = await agent_provider.get(operation_id)
+            else:
+                result = self.compute.get(operation_id)
+            
             if not result:
                 logger.error(f"[SERVICE] Operation {operation_id} not found in compute layer")
                 raise NotFoundError("Operation", operation_id)
@@ -196,7 +333,20 @@ class OperationsService:
     def cancel(self, operation_id: str) -> bool:
         logger.info(f"[SERVICE] Cancelling operation {operation_id}")
         try:
-            result = self.compute.cancel(operation_id)
+            # Check if this is an agent operation based on ID prefix
+            if operation_id.startswith("qwen_") or operation_id.startswith("prompt_qwen_agent"):
+                logger.info(f"[SERVICE] Routing cancel request to Qwen agent provider for {operation_id}")
+                from compute.qwen_agent import QwenCodeAgentProvider
+                agent_provider = QwenCodeAgentProvider()
+                result = agent_provider.cancel(operation_id)
+            elif operation_id.startswith("gemini_") or operation_id.startswith("prompt_gemini_agent"):
+                logger.info(f"[SERVICE] Routing cancel request to Gemini agent provider for {operation_id}")
+                from compute.gemini_agent import GeminiAgentProvider
+                agent_provider = GeminiAgentProvider()
+                result = agent_provider.cancel(operation_id)
+            else:
+                result = self.compute.cancel(operation_id)
+            
             if result is None:
                 logger.error(f"[SERVICE] Operation {operation_id} not found for cancellation")
                 raise NotFoundError("Operation", operation_id)
@@ -317,10 +467,16 @@ class OperationsService:
             logger.debug(f"[SERVICE] No response_format specified, defaulting to text mode [RequestID: {request_id}]")
             return
         
-        # response_format is only valid for llm_inference operations
-        if grant_file.operation != "llm_inference":
-            logger.error(f"[SERVICE] response_format specified for non-LLM operation: {grant_file.operation} [RequestID: {request_id}]")
+        # response_format is only valid for llm_inference operations (not agent operations)
+        agent_operations = ["agentic_task", "prompt_qwen_agent", "prompt_gemini_agent"]
+        if grant_file.operation not in ["llm_inference"] and grant_file.operation not in agent_operations:
+            logger.error(f"[SERVICE] response_format specified for unsupported operation: {grant_file.operation} [RequestID: {request_id}]")
             raise ValidationError(f"response_format is only valid for llm_inference operations, not {grant_file.operation}")
+        
+        # Agent operations don't support response_format
+        if grant_file.operation in agent_operations:
+            logger.debug(f"[SERVICE] Ignoring response_format for agent operation: {grant_file.operation} [RequestID: {request_id}]")
+            return
         
         # Validate response_format structure
         if not isinstance(response_format, dict):
@@ -338,5 +494,122 @@ class OperationsService:
         if format_type not in valid_types:
             logger.error(f"[SERVICE] Invalid response_format type: {format_type}, valid types: {valid_types} [RequestID: {request_id}]")
             raise ValidationError(f"response_format.type must be one of {valid_types}, got '{format_type}'")
-        
+
         logger.info(f"[SERVICE] Response format validation successful: {response_format} [RequestID: {request_id}]")
+
+    def _apply_jsonpath_filters(
+        self, files_metadata: list[FileMetadata], files_content: list[str], filters: dict, request_id: str = None
+    ) -> list[str]:
+        """
+        Apply JSONPath filters to file content for protocol-level data minimization.
+
+        This is a PROTOCOL-LEVEL operation that executes before any compute provider receives
+        data. Filtering is operation-agnostic and applies uniformly to all operations
+        (llm_inference, prompt_gemini_agent, prompt_qwen_agent, custom providers).
+
+        The method transforms raw decrypted file content by applying JSONPath expressions
+        specified in the grant file's parameters. This enables privacy-preserving computation
+        where only necessary data fields are exposed to operations, enforcing the principle
+        of data minimization at the protocol layer.
+
+        Processing:
+            1. Iterate through each file with its metadata
+            2. Skip files without corresponding filter (use original content)
+            3. Validate file content is valid JSON
+            4. Parse and execute JSONPath expression against file data
+            5. Serialize filtered result back to JSON string
+            6. Fall back to original content on any parsing or execution errors
+
+        Filter Behavior:
+            - Single match: Returns the matched value directly
+            - Multiple matches: Returns array of matched values
+            - No matches: Returns empty array
+            - Parse error: Returns original content with warning logged
+            - Non-JSON file: Returns original content with warning logged
+
+        Args:
+            files_metadata: List of file metadata objects containing file_id for matching
+            files_content: List of decrypted file content strings (same order as metadata)
+            filters: Dictionary mapping file_id (as string key) to JSONPath expression string.
+                Example: {"1891942": "$.publicData.linkedinUserData['hero','about']"}
+            request_id: Optional request identifier for log correlation
+
+        Returns:
+            List of filtered file content strings maintaining original order. Unfiltered
+            files or files with filter errors return original content unchanged.
+
+        Note:
+            This method enforces data minimization at the protocol layer, not at the
+            operation layer. Compute providers receive pre-filtered data and have no
+            ability to access filtered-out fields, ensuring privacy guarantees.
+
+        Example:
+            >>> metadata = [FileMetadata(file_id=123, ...)]
+            >>> content = ['{"user": {"name": "Alice", "ssn": "123-45-6789"}}']
+            >>> filters = {"123": "$.user.name"}
+            >>> result = service._apply_jsonpath_filters(metadata, content, filters)
+            >>> print(result[0])  # '"Alice"'
+        """
+        from jsonpath_ng import parse
+
+        if not request_id:
+            request_id = f"filter_{int(__import__('time').time() * 1000)}"
+
+        filtered_content = []
+
+        for i, (metadata, content) in enumerate(zip(files_metadata, files_content)):
+            file_id_str = str(metadata.file_id)
+
+            # Check if this file has a filter
+            if file_id_str not in filters:
+                logger.debug(f"[SERVICE] No filter for file {file_id_str}, using original content [RequestID: {request_id}]")
+                filtered_content.append(content)
+                continue
+
+            jsonpath_expr = filters[file_id_str]
+            logger.info(f"[SERVICE] Applying JSONPath filter to file {file_id_str}: {jsonpath_expr} [RequestID: {request_id}]")
+
+            # Try to parse content as JSON
+            try:
+                file_data = json.loads(content)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    f"[SERVICE] File {file_id_str} is not valid JSON, skipping filter. "
+                    f"Error: {str(e)} [RequestID: {request_id}]"
+                )
+                filtered_content.append(content)
+                continue
+
+            # Apply the JSONPath filter
+            try:
+                jsonpath = parse(jsonpath_expr)
+                matches = jsonpath.find(file_data)
+
+                if not matches:
+                    logger.warning(
+                        f"[SERVICE] JSONPath filter returned no matches for file {file_id_str}, "
+                        f"using empty result [RequestID: {request_id}]"
+                    )
+                    filtered_result = []
+                elif len(matches) == 1:
+                    # Single match - return the value directly
+                    filtered_result = matches[0].value
+                else:
+                    # Multiple matches - return as array
+                    filtered_result = [match.value for match in matches]
+
+                filtered_json = json.dumps(filtered_result, indent=2)
+                logger.info(
+                    f"[SERVICE] Filter applied successfully to file {file_id_str}. "
+                    f"Original size: {len(content)}, Filtered size: {len(filtered_json)} [RequestID: {request_id}]"
+                )
+                filtered_content.append(filtered_json)
+
+            except Exception as e:
+                logger.warning(
+                    f"[SERVICE] Failed to apply JSONPath filter to file {file_id_str}: {str(e)}. "
+                    f"Using original content [RequestID: {request_id}]"
+                )
+                filtered_content.append(content)
+
+        return filtered_content

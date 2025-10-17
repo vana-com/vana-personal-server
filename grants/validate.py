@@ -8,7 +8,11 @@ from jsonschema import ValidationError as JsonSchemaValidationError
 
 from domain.entities import GrantFile
 
-LLM_INFERENCE_OPERATION = "llm_inference"
+SUPPORTED_OPERATIONS = {
+    "llm_inference",
+    "prompt_gemini_agent", 
+    "prompt_qwen_agent"
+}
 
 
 def validate(data: Any, app_address: str) -> GrantFile:
@@ -22,8 +26,11 @@ def validate(data: Any, app_address: str) -> GrantFile:
             expires=data.get("expires"),
         )
 
-    if grant.operation != LLM_INFERENCE_OPERATION:
-        raise ValueError("Only LLM inference is supported")
+    if grant.operation not in SUPPORTED_OPERATIONS:
+        raise ValueError(
+            f"Unsupported operation: {grant.operation}. "
+            f"Supported operations are: {', '.join(sorted(SUPPORTED_OPERATIONS))}"
+        )
 
     if grant.grantee != app_address:
         raise ValueError(

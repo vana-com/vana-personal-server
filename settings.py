@@ -33,6 +33,38 @@ class Settings(BaseSettings):
         description="Blockchain chain ID"
     )
     
+    # Mock mode for local testing
+    mock_mode: bool = Field(
+        default=False,
+        alias="MOCK_MODE",
+        description="Enable mock mode to bypass blockchain validation for testing"
+    )
+    
+    # Cloudflare R2 Configuration
+    r2_account_id: str = Field(
+        default="",
+        alias="R2_ACCOUNT_ID",
+        description="Cloudflare R2 account ID"
+    )
+    
+    r2_access_key_id: str = Field(
+        default="",
+        alias="R2_ACCESS_KEY_ID", 
+        description="Cloudflare R2 access key ID"
+    )
+    
+    r2_secret_access_key: str = Field(
+        default="",
+        alias="R2_SECRET_ACCESS_KEY",
+        description="Cloudflare R2 secret access key"
+    )
+    
+    r2_bucket_name: str = Field(
+        default="personal-server-artifacts",
+        alias="R2_BUCKET_NAME",
+        description="R2 bucket name for artifact storage"
+    )
+    
     mnemonic_language: str = Field(
         default="english",
         alias="MNEMONIC_LANGUAGE",
@@ -136,6 +168,143 @@ class Settings(BaseSettings):
         default=None,
         alias="RATE_LIMIT_WHITELIST_IPS",
         description="Comma-separated list of whitelisted IPs"
+    )
+
+    # Qwen Code Configuration (headless agent)
+    qwen_api_url: Optional[str] = Field(
+        default=None,
+        alias="QWEN_API_URL",
+        description="OpenAI-compatible API endpoint URL"
+    )
+    
+    qwen_model_name: Optional[str] = Field(
+        default=None,
+        alias="QWEN_MODEL_NAME",
+        description="Model name (e.g., qwen/qwen3-coder)"
+    )
+    
+    qwen_api_key: Optional[str] = Field(
+        default=None,
+        alias="QWEN_API_KEY",
+        description="API key for authentication"
+    )
+    
+    qwen_timeout_sec: int = Field(
+        default=180,
+        alias="QWEN_TIMEOUT_SEC",
+        description="Wall-clock timeout for agent runs in seconds"
+    )
+    
+    qwen_max_stdout_mb: int = Field(
+        default=2,
+        alias="QWEN_MAX_STDOUT_MB",
+        description="Maximum stdout size in megabytes"
+    )
+    
+    qwen_cli_path: Optional[str] = Field(
+        default=None,
+        alias="QWEN_CLI_PATH",
+        description="Path to qwen CLI binary (defaults to 'qwen' on PATH)"
+    )
+
+    # Gemini CLI Configuration (headless agent)
+    gemini_api_key: Optional[str] = Field(
+        default=None,
+        alias="GEMINI_API_KEY",
+        description="Google API key for Gemini"
+    )
+    
+    gemini_use_vertex_ai: bool = Field(
+        default=False,
+        alias="GEMINI_USE_VERTEX_AI",
+        description="Use Vertex AI for Gemini (requires GCP project setup)"
+    )
+    
+    gemini_timeout_sec: int = Field(
+        default=180,
+        alias="GEMINI_TIMEOUT_SEC",
+        description="Wall-clock timeout for Gemini agent runs in seconds"
+    )
+    
+    gemini_max_stdout_mb: int = Field(
+        default=2,
+        alias="GEMINI_MAX_STDOUT_MB",
+        description="Maximum stdout size in megabytes for Gemini"
+    )
+    
+    gemini_cli_path: Optional[str] = Field(
+        default=None,
+        alias="GEMINI_CLI_PATH",
+        description="Path to gemini CLI binary (defaults to 'gemini' on PATH)"
+    )
+
+    # Docker Agent Execution Configuration
+    docker_agent_image: str = Field(
+        default="vana-agent-sandbox",
+        alias="DOCKER_AGENT_IMAGE",
+        description="Docker image name for agent sandbox execution"
+    )
+    
+    docker_agent_memory_limit: str = Field(
+        default="512m",
+        alias="DOCKER_AGENT_MEMORY_LIMIT",
+        description="Memory limit for Docker agent containers (e.g., '512m', '1g')"
+    )
+    
+    docker_agent_timeout_sec: int = Field(
+        default=300,
+        alias="DOCKER_AGENT_TIMEOUT_SEC",
+        description="Docker container execution timeout in seconds"
+    )
+    
+    docker_agent_max_output_mb: int = Field(
+        default=10,
+        alias="DOCKER_AGENT_MAX_OUTPUT_MB",
+        description="Maximum output capture size for Docker agents in megabytes"
+    )
+    
+    docker_agent_cpu_limit: Optional[str] = Field(
+        default="1.0",
+        alias="DOCKER_AGENT_CPU_LIMIT",
+        description="CPU limit for Docker agents (e.g., '0.5', '1.0', '2.0')"
+    )
+
+    # Agent Runtime Configuration
+    agent_runtime: str = Field(
+        default="process",
+        alias="AGENT_RUNTIME",
+        description="Agent execution runtime: 'process' for Cloud Run (default), 'docker' for local/dev"
+    )
+    
+    # Process Agent Configuration (for Cloud Run)
+    agent_max_concurrent_per_instance: int = Field(
+        default=1,
+        alias="AGENT_MAX_CONCURRENT_PER_INSTANCE",
+        description="Maximum concurrent agent processes per container instance"
+    )
+    
+    agent_memory_limit_mb: int = Field(
+        default=1024,
+        alias="AGENT_MEMORY_LIMIT_MB",
+        description="V8 heap limit for Node.js agents via --max-old-space-size (MB). Cloud Run container limit enforces instance-level memory."
+    )
+    
+    agent_timeout_sec: int = Field(
+        default=300,
+        alias="AGENT_TIMEOUT_SEC",
+        description="Agent process execution timeout in seconds"
+    )
+    
+    agent_file_size_limit_mb: int = Field(
+        default=100,
+        alias="AGENT_FILE_SIZE_LIMIT_MB",
+        description="Maximum file size per write operation in megabytes"
+    )
+    
+    agent_max_output_mb: int = Field(
+        default=10,
+        alias="AGENT_MAX_OUTPUT_MB",
+        description="Maximum output capture size for agents in megabytes"
     )
 
     @field_validator('replicate_api_token')

@@ -1,0 +1,22 @@
+{
+  "name": "vana-personal-server-agents",
+  "version": "0.1.0",
+  "description": "CLI dependencies for AI agents in personal server",
+  "private": true,
+  "dependencies": {
+    "@google/gemini-cli": "latest",
+    "@qwen-code/qwen-code": "^0.1.0-preview"
+  },
+  "devDependencies": {
+    "@codedependant/semantic-release-docker": "^5.0.0",
+    "@semantic-release/changelog": "^6.0.0",
+    "@semantic-release/exec": "^6.0.0",
+    "@semantic-release/git": "^10.0.0",
+    "conventional-changelog-conventionalcommits": "^7.0.0",
+    "semantic-release": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}

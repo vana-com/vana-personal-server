@@ -1,0 +1,167 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - 'test/**'
+      - 'devtest/**'
+      - 'feat/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - test
+          - development
+          - production
+
+env:
+  DOCKER_REGISTRY: europe-west1-docker.pkg.dev
+  REPOSITORY_NAME: cloud-run-source-deploy
+  IMAGE_NAME: vana-personal-server
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.environment) || (github.ref == 'refs/heads/main' && '["production"]' || (github.ref == 'refs/heads/develop' && '["development"]' || '["test"]'))) }}
+    environment:
+      name: ${{ matrix.environment }}
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.7.1
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ matrix.environment == 'production' && secrets.GCP_SA_KEY_PROD || secrets.GCP_SA_KEY_DEV }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.DOCKER_REGISTRY }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5.5.1
+        with:
+          images: |
+            ${{ env.DOCKER_REGISTRY }}/${{ vars.GCP_PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Registry cache is more reliable than GHA cache for production
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ vars.GCP_PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ vars.GCP_PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          platforms: linux/amd64
+          build-args: |
+            COMMIT_SHA=${{ github.sha }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.environment) || (github.ref == 'refs/heads/main' && '["production"]' || (github.ref == 'refs/heads/develop' && '["development"]' || '["test"]'))) }}
+    environment:
+      name: ${{ matrix.environment }}
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ matrix.environment == 'production' && secrets.GCP_SA_KEY_PROD || secrets.GCP_SA_KEY_DEV }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          # Use environment-specific configuration from GitHub environment variables
+          PROJECT_ID="${{ vars.GCP_PROJECT_ID }}"
+          SERVICE_NAME="${{ vars.SERVICE_NAME }}"
+          REGION="${{ vars.GCP_REGION }}"
+          
+          # Validate required environment variables
+          if [[ -z "$PROJECT_ID" ]] || [[ -z "$SERVICE_NAME" ]] || [[ -z "$REGION" ]]; then
+            echo "ERROR: Missing required environment variables"
+            echo "Please configure GCP_PROJECT_ID, SERVICE_NAME, and GCP_REGION in GitHub environment settings"
+            exit 1
+          fi
+          IMAGE="${{ env.DOCKER_REGISTRY }}/${PROJECT_ID}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image-digest }}"
+          
+          # Deploy with proper resource allocation and service account
+          gcloud run deploy ${SERVICE_NAME} \
+            --image=${IMAGE} \
+            --project=${PROJECT_ID} \
+            --region=${REGION} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --service-account=vana-personal-server@${PROJECT_ID}.iam.gserviceaccount.com \
+            --memory=${{ vars.MEMORY || (matrix.environment == 'production' && '2Gi' || '1Gi') }} \
+            --cpu=${{ vars.CPU || (matrix.environment == 'production' && '2' || '1') }} \
+            --min-instances=${{ vars.MIN_INSTANCES || '0' }} \
+            --max-instances=${{ vars.MAX_INSTANCES || (matrix.environment == 'production' && '10' || '3') }} \
+            --timeout=60 \
+            --concurrency=100 \
+            --set-env-vars="CHAIN_ID=${{ vars.CHAIN_ID }},R2_BUCKET_NAME=${{ vars.R2_BUCKET_NAME }},QWEN_API_URL=${{ vars.QWEN_API_URL }},QWEN_MODEL_NAME=${{ vars.QWEN_MODEL_NAME }}" \
+            --set-secrets="WALLET_MNEMONIC=WALLET_MNEMONIC:latest,REPLICATE_API_TOKEN=REPLICATE_API_TOKEN:latest,QWEN_API_KEY=QWEN_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,R2_ACCOUNT_ID=R2_ACCOUNT_ID:latest,R2_ACCESS_KEY_ID=R2_ACCESS_KEY_ID:latest,R2_SECRET_ACCESS_KEY=R2_SECRET_ACCESS_KEY:latest"
+          
+          # Get the service URL
+          URL=$(gcloud run services describe ${SERVICE_NAME} \
+            --project=${PROJECT_ID} \
+            --region=${REGION} \
+            --format='value(status.url)')
+          
+          echo "url=${URL}" >> $GITHUB_OUTPUT
+
+      - name: Smoke test
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          echo "Testing deployment at ${URL}"
+          
+          # Wait for service to be ready
+          sleep 10
+          
+          # Test health endpoint
+          response=$(curl -s -o /dev/null -w "%{http_code}" "${URL}/docs" || true)
+          
+          if [[ "${response}" != "200" ]]; then
+            echo "❌ Health check failed with status ${response}"
+            exit 1
+          fi
+          
+          echo "✅ Deployment successful and healthy"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "⚠️ Deployment to ${{ matrix.environment }} failed"
+          echo "Check the logs above for details"

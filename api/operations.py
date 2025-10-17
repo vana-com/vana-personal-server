@@ -71,22 +71,36 @@ async def create_operation(
 ) -> CreateOperationResponse:
     """
     Create and queue a new operation for asynchronous processing.
-    
-    This endpoint:
-    1. Validates the app signature against the operation request
-    2. Verifies blockchain permissions for the requested operation
-    3. Fetches and decrypts user data based on permissions
-    4. Submits the operation to the appropriate compute backend (Replicate for LLM)
-    
+
+    This endpoint enforces the complete Vana protocol including signature validation,
+    blockchain permission verification, data decryption, and protocol-level filtering
+    before executing operations on user data.
+
+    Processing Pipeline:
+        1. Validates the app signature against the operation request
+        2. Verifies blockchain permissions for the requested operation
+        3. Fetches and decrypts user data based on permissions
+        4. Applies JSONPath filters for data minimization (protocol-level, all operations)
+        5. Submits the operation to the appropriate compute backend
+
+    JSONPath Filtering:
+        If the grant file's parameters include a 'filters' field, the personal server
+        applies JSONPath expressions to user data BEFORE any compute provider receives it.
+        This protocol-level filtering ensures data minimization and privacy guarantees
+        across all operation types.
+
+        Filter format: {"file_id": "JSONPath expression"}
+        Example: {"1891942": "$.publicData.linkedinUserData['hero','about']"}
+
     Args:
         request: Operation creation request with signature and parameters
         operations_service: Injected operations service dependency
         http_request: Raw HTTP request for rate limiting
         x_request_id: Optional client-provided request ID for tracing
-        
+
     Returns:
         CreateOperationResponse with operation ID for status polling
-        
+
     Raises:
         HTTPException(400): Malformed request or invalid JSON
         HTTPException(401): Signature verification failed
@@ -94,11 +108,16 @@ async def create_operation(
         HTTPException(404): Permission or grant file not found
         HTTPException(429): Rate limit exceeded
         HTTPException(500): Backend service unavailable
-        
+
     Note:
         Operations are processed asynchronously. Use the returned operation_id
         with GET /operations/{operation_id} to poll for results.
-        Average processing time: 2-10 seconds for LLM inference.
+        Average processing time: 2-10 seconds for LLM inference, 30-120 seconds for agents.
+
+    Supported Operations:
+        - llm_inference: LLM text generation with user data context
+        - prompt_gemini_agent: Gemini-based agentic task execution with web search
+        - prompt_qwen_agent: Qwen-based agentic task execution with shell commands
     """
     # Generate unique request ID for tracking
     request_id = f"req_{int(time.time() * 1000)}_{id(request)}"
@@ -235,7 +254,7 @@ async def get_operation(
     
     try:
         logger.info(f"[API] Calling operations_service.get({operation_id}) [RequestID: {request_id}]")
-        operation: GetResponse = operations_service.get(
+        operation: GetResponse = await operations_service.get(
             operation_id
         )
 
@@ -265,6 +284,18 @@ async def get_operation(
             field=getattr(e, 'field', None)
         )
         raise HTTPException(status_code=e.status_code, detail=error_response.model_dump())
+    except ValueError as e:
+        # Handle "Operation not found" errors
+        if "not found" in str(e).lower():
+            processing_time = time.time() - start_time
+            logger.warning(f"[API] Operation {operation_id} not found [RequestID: {request_id}] [ProcessingTime: {processing_time:.3f}s]")
+            error_response = ErrorResponse(
+                detail=f"Operation {operation_id} not found",
+                error_code="NOT_FOUND_ERROR"
+            )
+            raise HTTPException(status_code=404, detail=error_response.model_dump())
+        # Re-raise if it's a different ValueError
+        raise
     except Exception as e:
         processing_time = time.time() - start_time
         logger.error(f"[API] Unexpected exception in get_operation({operation_id}): {str(e)} [RequestID: {request_id}] [ProcessingTime: {processing_time:.3f}s]")
