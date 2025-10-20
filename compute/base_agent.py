@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 from abc import ABC, abstractmethod
@@ -291,6 +292,31 @@ class BaseAgentProvider(BaseCompute, ABC):
             logger.info(f"[{self.AGENT_TYPE}] Cancelled task: {prediction_id}")
         return success
     
+    @staticmethod
+    def _sanitize_schema_name(schema_name: str) -> str:
+        """
+        Sanitize schema name for safe filesystem use.
+
+        Replaces unsafe characters with underscores, keeping only alphanumeric,
+        hyphen, underscore, and dot. Prevents FileNotFoundError from path
+        separators or filesystem-illegal characters in schema names.
+
+        Args:
+            schema_name: Raw schema name from blockchain
+
+        Returns:
+            Safe filename component (lowercase alphanumeric + [._-])
+
+        Examples:
+            "Spotify/History" → "spotify_history"
+            "ChatGPT Data" → "chatgpt_data"
+            "Data<>:*?" → "data_"
+        """
+        # Replace any unsafe chars with underscore, collapse consecutive
+        clean = re.sub(r'[^a-zA-Z0-9._-]+', '_', schema_name)
+        clean = re.sub(r'_+', '_', clean.strip('_.-'))
+        return clean.lower() or 'schema'
+
     def _prepare_files(self, files_content: list[str], files_metadata: Optional[List[Any]] = None) -> Dict[str, bytes]:
         """
         Convert file contents to workspace format with descriptive names.
@@ -314,8 +340,8 @@ class BaseAgentProvider(BaseCompute, ABC):
                 metadata = files_metadata[i]
                 # Use schema name for filename if available
                 if hasattr(metadata, 'schema_name') and metadata.schema_name:
-                    # Clean schema name for use as filename
-                    base_name = metadata.schema_name.lower().replace(" ", "_")
+                    # Sanitize schema name for safe filesystem use
+                    base_name = self._sanitize_schema_name(metadata.schema_name)
                     # Determine extension based on dialect
                     if hasattr(metadata, 'schema_dialect') and metadata.schema_dialect:
                         dialect = metadata.schema_dialect.lower()
