@@ -97,7 +97,7 @@ class ReplicateLlmInference(BaseCompute):
         # Store response formats for predictions
         self._prediction_formats: Dict[str, Dict[str, Any]] = {}
 
-    async def execute(self, grant_file: GrantFile, files_content: list[str], context: OperationContext) -> ExecuteResponse:
+    async def execute(self, grant_file: GrantFile, files_content: list[str], context: OperationContext, files_metadata: Optional[list] = None) -> ExecuteResponse:
         """
         Execute LLM inference operation with user data.
 
@@ -112,6 +112,7 @@ class ReplicateLlmInference(BaseCompute):
                 - response_format (dict, optional): JSON mode configuration
             files_content: List of decrypted file contents to inject into prompt
             context: Operation context for execution (provided for consistency, not used by Replicate provider)
+            files_metadata: Optional list of file metadata (not used by LLM inference provider)
 
         Returns:
             ExecuteResponse with prediction ID and creation timestamp

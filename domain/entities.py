@@ -36,6 +36,9 @@ class FileMetadata:
     owner_address: str
     public_url: str
     encrypted_key: str
+    schema_id: Optional[int] = None
+    schema_name: Optional[str] = None
+    schema_dialect: Optional[str] = None
 
 
 @dataclass

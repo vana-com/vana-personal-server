@@ -207,28 +207,29 @@ class BaseAgentProvider(BaseCompute, ABC):
             f"GOAL:\n{goal}\n"
         )
     
-    async def execute(self, grant_file: GrantFile, files_content: list[str], context: OperationContext) -> ExecuteResponse:
+    async def execute(self, grant_file: GrantFile, files_content: list[str], context: OperationContext, files_metadata: Optional[List[Any]] = None) -> ExecuteResponse:
         """
         Start an agentic task asynchronously.
-        
+
         Args:
             grant_file: Grant containing operation parameters
             files_content: List of decrypted file contents
             context: Operation context with grantor/grantee information
-            
+            files_metadata: Optional list of file metadata with schema information
+
         Returns:
             ExecuteResponse with operation ID (task runs in background)
         """
         goal = grant_file.parameters.get("goal")
         if not goal or not isinstance(goal, str):
             raise ValueError(f"{self.AGENT_TYPE} operation requires 'goal' parameter")
-        
+
         # Use operation ID from context
         operation_id = context.operation_id
         created_at = datetime.utcnow().isoformat() + "Z"
-        
-        # Convert files to workspace format
-        files_dict = self._prepare_files(files_content)
+
+        # Convert files to workspace format with schema-based naming
+        files_dict = self._prepare_files(files_content, files_metadata)
         
         # Create task entry
         await self._task_store.create_task(operation_id)
@@ -290,22 +291,55 @@ class BaseAgentProvider(BaseCompute, ABC):
             logger.info(f"[{self.AGENT_TYPE}] Cancelled task: {prediction_id}")
         return success
     
-    def _prepare_files(self, files_content: list[str]) -> Dict[str, bytes]:
-        """Convert file contents to workspace format with descriptive names."""
+    def _prepare_files(self, files_content: list[str], files_metadata: Optional[List[Any]] = None) -> Dict[str, bytes]:
+        """
+        Convert file contents to workspace format with descriptive names.
+
+        Uses schema information from blockchain when available, falling back to
+        generic names. This avoids the performance penalty of scanning file contents.
+
+        Args:
+            files_content: List of file contents
+            files_metadata: Optional list of FileMetadata with schema information
+
+        Returns:
+            Dictionary mapping filenames to file contents as bytes
+        """
         files_dict = {}
         for i, content in enumerate(files_content):
-            # Determine filename based on content
-            if "chatgpt" in content.lower():
-                filename = f"chatgpt_conversations_{i:02d}.txt"
-            elif "spotify" in content.lower():
-                filename = f"spotify_data_{i:02d}.json"
-            elif "linkedin" in content.lower():
-                filename = f"linkedin_profile_{i:02d}.json"
-            else:
+            # Determine filename based on schema metadata if available
+            filename = None
+
+            if files_metadata and i < len(files_metadata):
+                metadata = files_metadata[i]
+                # Use schema name for filename if available
+                if hasattr(metadata, 'schema_name') and metadata.schema_name:
+                    # Clean schema name for use as filename
+                    base_name = metadata.schema_name.lower().replace(" ", "_")
+                    # Determine extension based on dialect
+                    if hasattr(metadata, 'schema_dialect') and metadata.schema_dialect:
+                        dialect = metadata.schema_dialect.lower()
+                        if dialect == "sqlite":
+                            ext = "db"
+                        elif dialect == "json":
+                            ext = "json"
+                        elif dialect == "csv":
+                            ext = "csv"
+                        else:
+                            ext = "txt"
+                    else:
+                        ext = "txt"
+
+                    filename = f"{base_name}_{i:02d}.{ext}"
+                    logger.info(f"[AGENT] Using schema-based filename: {filename} (schema: {metadata.schema_name})")
+
+            # Fallback to generic filename if no schema available
+            if not filename:
                 filename = f"user_data_{i:02d}.txt"
-            
+                logger.info(f"[AGENT] Using generic filename: {filename} (no schema metadata)")
+
             files_dict[filename] = content.encode('utf-8')
-        
+
         return files_dict
     
     def _map_status(self, status: TaskStatus) -> str:

@@ -3,7 +3,7 @@ Domain value objects - Immutable objects defined by their values.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,7 @@ class GrantData:
 class PersonalServerRequest:
     """Immutable request for personal server operations."""
     permission_id: int
+    file_ids: Optional[List[int]] = None
 
 
 @dataclass(frozen=True)
