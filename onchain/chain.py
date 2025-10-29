@@ -48,6 +48,13 @@ CONTRACTS = {
             LOCAL.chain_id: "0x0000000000000000000000000000000000000003",  # Mock address for local
         },
     },
+    "DataRefinerRegistry": {
+        "addresses": {
+            MOKSHA.chain_id: "0x93c3EF89369fDcf08Be159D9DeF0F18AB6Be008c",
+            MAINNET.chain_id: "0x93c3EF89369fDcf08Be159D9DeF0F18AB6Be008c",
+            LOCAL.chain_id: "0x0000000000000000000000000000000000000004",  # Mock address for local
+        },
+    },
 }
 
 
@@ -87,3 +94,8 @@ def get_data_registry_address(chain_id: int = MOKSHA.chain_id) -> str:
 def get_data_portability_grantees_address(chain_id: int = MOKSHA.chain_id) -> str:
     """Get DataPortabilityGrantees contract address."""
     return get_contract_address(chain_id, "DataPortabilityGrantees")
+
+
+def get_data_refiner_registry_address(chain_id: int = MOKSHA.chain_id) -> str:
+    """Get DataRefinerRegistry contract address."""
+    return get_contract_address(chain_id, "DataRefinerRegistry")

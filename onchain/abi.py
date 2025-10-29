@@ -53,6 +53,11 @@ DATA_REGISTRY_ABI = [
                     {"internalType": "string", "name": "url", "type": "string"},
                     {
                         "internalType": "uint256",
+                        "name": "schemaId",
+                        "type": "uint256",
+                    },
+                    {
+                        "internalType": "uint256",
                         "name": "addedAtBlock",
                         "type": "uint256",
                     },
@@ -100,6 +105,28 @@ DATA_PORTABILITY_GRANTEES_ABI = [
     }
 ]
 
+# DataRefinerRegistry ABI
+DATA_REFINER_REGISTRY_ABI = [
+    {
+        "inputs": [{"internalType": "uint256", "name": "schemaId", "type": "uint256"}],
+        "name": "schemas",
+        "outputs": [
+            {
+                "components": [
+                    {"internalType": "string", "name": "name", "type": "string"},
+                    {"internalType": "string", "name": "dialect", "type": "string"},
+                    {"internalType": "string", "name": "definitionUrl", "type": "string"},
+                ],
+                "internalType": "struct IDataRefinerRegistry.Schema",
+                "name": "",
+                "type": "tuple",
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function",
+    }
+]
+
 
 def get_abi(contract_name: str) -> list:
     """Get ABI for a specific contract."""
@@ -107,6 +134,7 @@ def get_abi(contract_name: str) -> list:
         "DataPermissions": DATA_PERMISSIONS_ABI,
         "DataRegistry": DATA_REGISTRY_ABI,
         "DataPortabilityGrantees": DATA_PORTABILITY_GRANTEES_ABI,
+        "DataRefinerRegistry": DATA_REFINER_REGISTRY_ABI,
     }
 
     if contract_name not in abi_map:

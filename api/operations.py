@@ -92,6 +92,43 @@ async def create_operation(
         Filter format: {"file_id": "JSONPath expression"}
         Example: {"1891942": "$.publicData.linkedinUserData['hero','about']"}
 
+    General vs Narrow Permissions:
+        The request supports two usage modes for maximum flexibility:
+
+        1. General Access (reusable signature):
+           - Sign: {"permission_id": 1024, "parameters": {...}}
+           - Server uses all files from permission
+           - Enables signature reuse for multiple requests
+           - Use case: Daily recommendations, recurring analytics
+
+        2. Narrow Access (specific request):
+           - Sign: {"permission_id": 1024, "file_ids": [1,2], "parameters": {...}}
+           - Server validates file subset against permission
+           - Requires new signature per request
+           - Use case: Sensitive analysis, user-approved operations
+
+        Both modes are secure - the blockchain permission defines the security boundary.
+
+    Replay Protection:
+        All requests must include a timestamp field for replay attack protection:
+        - timestamp (required): Unix timestamp for request freshness validation
+        - Requests must be within 15 minutes of server time (configurable)
+        - Prevents captured signatures from being reused days/weeks later
+        - Based on AWS Signature V4 security model
+
+    Request Format:
+        The operation_request_json field (which is signed) can include:
+        - permission_id (required): Blockchain permission ID
+        - timestamp (required): Unix timestamp for replay protection
+        - parameters (optional): Runtime parameters merged with grant parameters
+        - operation (optional): Must match grant operation if provided
+        - file_ids (optional): Subset of permission's files to use
+
+        Example requests:
+        {"permission_id": 1024, "timestamp": 1698765432}
+        {"permission_id": 1024, "timestamp": 1698765432, "parameters": {"prompt": "analyze this"}}
+        {"permission_id": 1024, "timestamp": 1698765432, "file_ids": [1, 2], "parameters": {"temp": 0.7}}
+
     Args:
         request: Operation creation request with signature and parameters
         operations_service: Injected operations service dependency

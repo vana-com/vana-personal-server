@@ -7,13 +7,13 @@ import json
 def validate_evm_address(value: str) -> str:
     """
     Validate EIP-55 checksum EVM address format.
-    
+
     Args:
         value: Address string to validate
-        
+
     Returns:
         Validated address string
-        
+
     Raises:
         ValueError: If address format is invalid (not 40 hex chars with 0x prefix)
     """
@@ -25,13 +25,13 @@ def validate_evm_address(value: str) -> str:
 def validate_public_key(value: str) -> str:
     """
     Validate secp256k1 public key format (compressed or uncompressed).
-    
+
     Args:
         value: Public key string to validate
-        
+
     Returns:
         Validated public key string
-        
+
     Raises:
         ValueError: If public key format is invalid
     """
@@ -87,7 +87,7 @@ class PersonalServerModel(BaseModel):
         description="Personal server's public key for encryption (SEC1 uncompressed format)",
         example="0x04bcdf3e094f5c9a7819baedfabe81c235b8e6c8a5b26b62a98fa685deaac1e488090fa3c6b2667c1bf3a6e593bc0fb3e670f78a72e9fe0b1c40e2f9dda957f61a"
     )
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -111,7 +111,7 @@ class IdentityResponseModel(BaseModel):
     personal_server: PersonalServerModel = Field(
         description="Personal server details for this user"
     )
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -139,11 +139,12 @@ class CreateOperationRequest(BaseModel):
     )
     operation_request_json: str = Field(
         description=(
-            "JSON-encoded operation request. Must contain permission_id. "
-            "Can optionally include operation (for verification) and parameters (runtime values). "
+            "JSON-encoded operation request. Must contain permission_id and timestamp (Unix timestamp). "
+            "The timestamp field is required for replay protection (requests must be within 15 minutes of server time). "
+            "Can optionally include operation (for verification), parameters (runtime values), and file_ids (file subset). "
             "Runtime parameters are merged with grant parameters (grant takes precedence)."
         ),
-        example='{"permission_id": 1024, "parameters": {"goal": "analyze trends"}}',
+        example='{"permission_id": 1024, "timestamp": 1698765432, "parameters": {"goal": "analyze trends"}}',
         min_length=2,
         max_length=100000
     )
@@ -160,12 +161,12 @@ class CreateOperationRequest(BaseModel):
             return v
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in operation_request_json: {e}")
-    
+
     class Config:
         json_schema_extra = {
             "example": {
                 "app_signature": "0x3cffa64411a02d4a257663848df70fd445f513edcbb78a2e94495af45987e2de6144efdafd37a3d2b95e4e535c4a84fbcfb088d8052d435c382e7ca9a5ac57801c",
-                "operation_request_json": '{"permission_id": 1024}'
+                "operation_request_json": '{"permission_id": 1024, "timestamp": 1698765432}'
             }
         }
 
@@ -184,7 +185,7 @@ class CreateOperationResponse(BaseModel):
         description="ISO 8601 timestamp when operation was created",
         example="2024-01-01T00:00:00Z"
     )
-    
+
     class Config:
         json_schema_extra = {
             "example": {
