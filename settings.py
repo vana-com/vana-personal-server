@@ -112,6 +112,13 @@ class Settings(BaseSettings):
         description="Request timeout in seconds"
     )
 
+    # Timestamp-based Replay Protection Configuration
+    timestamp_freshness_window_seconds: int = Field(
+        default=900,  # 15 minutes - matches AWS Signature V4
+        alias="TIMESTAMP_FRESHNESS_WINDOW_SECONDS",
+        description="Time window for timestamp validation in seconds (default: 900 = 15 minutes)"
+    )
+
     # Upstash Redis Configuration
     upstash_redis_rest_url: Optional[str] = Field(
         default=None,

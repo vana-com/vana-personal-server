@@ -103,6 +103,12 @@ class OperationsService:
         
         try:
             request_data = json.loads(request_json)
+
+            # Handle legacy requests without timestamp (inject sentinel value)
+            from domain.value_objects import TIMESTAMP_NOT_PROVIDED
+            if 'timestamp' not in request_data:
+                request_data['timestamp'] = TIMESTAMP_NOT_PROVIDED
+
             request = PersonalServerRequest(**request_data)
 
             # Extract optional runtime parameters, operation, and file subset
@@ -126,6 +132,9 @@ class OperationsService:
         if request.permission_id <= 0:
             logger.error(f"[SERVICE] Invalid permission ID: {request.permission_id} [RequestID: {request_id}]")
             raise ValidationError("Valid permission ID is required", "permission_id")
+
+        # Timestamp-based replay protection (with legacy fallback)
+        self._validate_request_timestamp(request.timestamp, request_id)
 
         try:
             app_address = self._recover_app_address(request_json, signature)
@@ -364,6 +373,86 @@ class OperationsService:
                 raise
             logger.error(f"[SERVICE] Failed to cancel operation {operation_id}: {str(e)}")
             raise ComputeError(f"Failed to cancel operation: {str(e)}")
+
+    def _validate_request_timestamp(self, timestamp: int, request_id: str = None) -> None:
+        """
+        Validate request timestamp for replay attack protection.
+
+        Implements AWS Signature V4-style timestamp validation with configurable freshness window.
+
+        Args:
+            timestamp: Unix timestamp from request (-1 = not provided, legacy mode)
+            request_id: Request ID for logging
+
+        Raises:
+            ValidationError: If timestamp is too old, too far in future, or invalid format
+
+        Security Properties:
+            - Configurable replay window (default: 15 minutes, matching AWS SigV4)
+            - Stateless validation (no storage required)
+            - Prevents long-term replay attacks (captured signatures can't be reused days/weeks later)
+        """
+        if not request_id:
+            request_id = f"validate_ts_{int(time.time() * 1000)}"
+
+        # Import settings and sentinel value
+        from settings import get_settings
+        from domain.value_objects import TIMESTAMP_NOT_PROVIDED
+        settings = get_settings()
+
+        # Get freshness window from settings (default: 15 minutes)
+        FRESHNESS_WINDOW = settings.timestamp_freshness_window_seconds
+
+        # Check for sentinel value (legacy request without timestamp)
+        if timestamp == TIMESTAMP_NOT_PROVIDED:
+            # Legacy mode: Allow requests without timestamp (will be removed in future)
+            logger.warning(
+                f"[SERVICE] Request without timestamp - vulnerable to replay attacks. "
+                f"This fallback will be removed in a future update. [RequestID: {request_id}]"
+            )
+            return
+
+        # Validate timestamp format
+        if not isinstance(timestamp, int) or timestamp <= 0:
+            logger.error(f"[SERVICE] Invalid timestamp format: {timestamp} [RequestID: {request_id}]")
+            raise ValidationError(
+                f"timestamp must be a positive integer (Unix timestamp), got: {timestamp}",
+                "timestamp"
+            )
+
+        # Check freshness
+        current_time = int(time.time())
+        time_diff = abs(current_time - timestamp)
+
+        if time_diff > FRESHNESS_WINDOW:
+            logger.error(
+                f"[SERVICE] Request timestamp outside freshness window. "
+                f"Current: {current_time}, Request: {timestamp}, Diff: {time_diff}s, "
+                f"Max: {FRESHNESS_WINDOW}s [RequestID: {request_id}]"
+            )
+
+            # Provide helpful error message
+            if timestamp < current_time:
+                age_minutes = time_diff // 60
+                raise ValidationError(
+                    f"Request timestamp too old ({age_minutes} minutes ago). "
+                    f"Requests must be within {FRESHNESS_WINDOW // 60} minutes of server time. "
+                    f"This prevents replay attacks.",
+                    "timestamp"
+                )
+            else:
+                future_minutes = time_diff // 60
+                raise ValidationError(
+                    f"Request timestamp too far in future ({future_minutes} minutes ahead). "
+                    f"Check client clock synchronization. "
+                    f"Requests must be within {FRESHNESS_WINDOW // 60} minutes of server time.",
+                    "timestamp"
+                )
+
+        logger.info(
+            f"[SERVICE] Timestamp validation successful. "
+            f"Time diff: {time_diff}s (within {FRESHNESS_WINDOW}s window) [RequestID: {request_id}]"
+        )
 
     def _recover_app_address(self, request_json: str, signature: str):
         logger.debug(f"[SERVICE] Recovering app address from signature")
