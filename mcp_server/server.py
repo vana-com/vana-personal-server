@@ -80,30 +80,3 @@ async def add_numbers(a: float, b: float) -> dict:
         "message": f"Successfully added {a} + {b}",
         "operation": "addition"
     }
-
-
-# ============================================================================
-# Transport Functions
-# ============================================================================
-
-def run_stdio():
-    """
-    Run MCP server in stdio mode (blocking).
-
-    Used for local MCP access.
-    """
-    mcp.run(transport="stdio")
-
-
-def run_http(port: int = 3000):
-    """
-    Run MCP server in Streamable HTTP mode (blocking).
-
-    This runs the MCP server on a separate port from the REST API.
-    For Cloud Run deployment, this should run in a separate container/service
-    or on a different port.
-
-    Args:
-        port: Port to run MCP HTTP server on (default 3000)
-    """
-    mcp.run(transport="http", host="0.0.0.0", port=port)
