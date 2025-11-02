@@ -24,7 +24,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-mcp_app = mcp.http_app(path='/mcp')
+mcp_app = mcp.http_app(path='/')
 
 app = FastAPI(
     title="Vana Personal-Server API",
