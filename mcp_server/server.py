@@ -3,55 +3,16 @@ MCP Server implementation for the Vana Personal Server.
 """
 
 import logging
-from fastmcp import FastMCP, Context
-from fastapi import Request
-from eth_account import Account
-from eth_account.messages import encode_defunct
+from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_access_token
+from mcp_server.auth_provider import SignatureAuthProvider
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("Vana Personal Server")
-
-# Static authentication message
-AUTH_MESSAGE = "Vana Personal Server Auth Key"
-
-
-# ============================================================================
-# Authentication Middleware (for HTTP mode only)
-# ============================================================================
-
-async def mcp_auth_middleware(request: Request, call_next):
-    """
-    Authentication middleware for HTTP transport.
-
-    For stdio mode, this middleware is not used (stdio is trusted local process).
-    For HTTP mode (streamable HTTP transport), validates EIP-191 signatures.
-
-    Expected headers:
-    - X-Signature: Ethereum signature (0x-prefixed hex) for AUTH_MESSAGE
-
-    The wallet address is derived from the signature, not provided by the client.
-    """
-    signature = request.headers.get("X-Signature")
-    request.state.authenticated = False
-    request.state.wallet_address = None
-
-    if signature:
-        try:
-            encoded_message = encode_defunct(text=AUTH_MESSAGE)
-            recovered_address = Account.recover_message(
-                encoded_message,
-                signature=signature
-            )
-            request.state.authenticated = True
-            request.state.wallet_address = recovered_address.lower()
-            logger.info(f"Authenticated wallet: {recovered_address}")
-
-        except Exception as e:
-            logger.error(f"Authentication error: {e}")
-
-    response = await call_next(request)
-    return response
+mcp = FastMCP(
+    "Vana Personal Server",
+    auth=SignatureAuthProvider()
+)
 
 
 # ============================================================================
@@ -79,4 +40,34 @@ async def add_numbers(a: float, b: float) -> dict:
         "result": result,
         "message": f"Successfully added {a} + {b}",
         "operation": "addition"
+    }
+
+
+@mcp.tool()
+async def whoami() -> dict:
+    """
+    Return authenticated wallet address.
+
+    This tool tests that authentication is working correctly by
+    returning the wallet address extracted from the signature.
+
+    Returns:
+        Dictionary with wallet address and auth status
+    """
+    access_token = get_access_token()
+
+    if access_token is None:
+        return {
+            "authenticated": False,
+            "wallet_address": None,
+            "message": "Not authenticated (stdio mode or missing auth)"
+        }
+
+    wallet_address = access_token.claims.get("sub")
+    logger.info(f"Authenticated wallet from token: {wallet_address}")
+
+    return {
+        "authenticated": True,
+        "wallet_address": wallet_address,
+        "message": f"Authenticated as {wallet_address}"
     }
