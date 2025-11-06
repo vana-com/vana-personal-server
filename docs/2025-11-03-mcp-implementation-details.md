@@ -19,8 +19,8 @@ Resources provide direct data access via URIs. Use when LLM needs to read files,
 * `vana://files`: List all accessible files for authenticated user (file ID, file URL, date added, and schema ID)  
   * Query params: `schema_ids` (array), `limit` (int, default 10), `offset` (int, default 0\)  
   * Example: `vana://files?schema_ids=1,2,3&limit=20&offset=0`  
-  * Returns: `{files: [...], total: 42, limit: 20, offset: 0}`  
-  * **Important**: Filters out files without schema ID (helps keep LLM focused on files with schema context)  
+  * Returns: `{files: [...], limit: 20, offset: 0}`  
+  * **Important**: Filters out files without schema ID (helps keep LLM focused on files with schema context). Note: Total counts are not available from the subgraph query.  
 * `vana://file/{file_id}/metadata`: Get file metadata (file URL, date added, and schema ID, if any)  
   * Returns: `{file_id, file_url, schema_id, date_added}`  
 * `vana://file/{file_id}`: Get decrypted file contents  
@@ -34,7 +34,8 @@ Resources provide direct data access via URIs. Use when LLM needs to read files,
 * `vana://schemas`: List all available schemas in the network (schema ID and brief description)  
   * Query params: `query` (string), `limit` (int, default 10), `offset` (int, default 0\)  
   * Example: `vana://schemas?query=chatgpt&limit=10`  
-  * Returns: `{schemas: [...], total: 25, limit: 10, offset: 0}`  
+  * Returns: `{schemas: [...], limit: 10, offset: 0}`  
+  * **Note**: Total counts are not available from the subgraph query. To determine if there are more pages, check if `len(schemas) == limit`.
 * `vana://schema/{schema_id}`: Get schema definition (name, version, dialect, description, and the schema itself)  
   * Example response: Entire contents of a schema file [https://ipfs.io/ipfs/bafkreig5vccfw2helr3g6zyzzo7lo4up2nzpgvfkx6a4noascjoe22w7de](https://ipfs.io/ipfs/bafkreig5vccfw2helr3g6zyzzo7lo4up2nzpgvfkx6a4noascjoe22w7de)
 
@@ -42,7 +43,7 @@ Resources provide direct data access via URIs. Use when LLM needs to read files,
 
 Tools provide functions for search, filtering, and aggregation. Use when LLM needs to query, filter, or combine data from multiple resources.
 
-**Pagination defaults:** `limit=10`, `offset=0`, responses include `total` count.
+**Pagination defaults:** `limit=10`, `offset=0`. Note: Total counts are not available from the subgraph query. To determine if there are more pages, check if `len(results) == limit`.
 
 ### `list_files(schema_ids?: array, limit?: int, offset?: int)`
 
@@ -61,7 +62,6 @@ Tools provide functions for search, filtering, and aggregation. Use when LLM nee
   "files": [
     {"file_id": 123, "schema_id": 5, "date_added": "2024-01-15", "file_url": "https://drive.google.com/?id=1234..."}
   ],
-  "total": 42,
   "limit": 10,
   "offset": 0
 }
@@ -93,9 +93,7 @@ Tools provide functions for search, filtering, and aggregation. Use when LLM nee
   "schemas": [{"schema_id": 5, "name": "ChatGPT Conversations", "description": "..."}],
   "files": [
     {"file_id": 123, "schema_id": 5, "date_added": "2024-01-15"}
-  ],
-  "total_files": 3,
-  "total_schemas": 1
+  ]
 }
 ```
 
@@ -193,7 +191,6 @@ Tools provide functions for search, filtering, and aggregation. Use when LLM nee
       "description": "Chat history and memories from ChatGPT"
     }
   ],
-  "total": 25,
   "limit": 10,
   "offset": 0
 }
@@ -253,7 +250,7 @@ MCP Actions:
    → Reads resource: vana://schemas?query=chatgpt
    → Finds schema_id=5 ("ChatGPT Conversations")
    → Reads resource: vana://files?schema_ids=5&limit=10
-   → Returns: {files: [3 files], total: 3, schemas: [...]}
+   → Returns: {files: [3 files], schemas: [...]}
 
 2. For each file (file_id=123, 124, 125):
    → Tool: get_file_metadata(file_id=123)
@@ -275,12 +272,12 @@ User: "What data do I have in Vana?"
 MCP Actions:
 1. Tool: list_schemas(limit=50)
    → Reads resource: vana://schemas?limit=50
-   → Returns: {schemas: [25 schemas], total: 25}
+   → Returns: {schemas: [25 schemas], limit: 50, offset: 0}
 
 2. For top 10 schemas (parallel requests):
    → Tool: list_files(schema_ids=[schema_id], limit=1)
    → Reads resource: vana://files?schema_ids={schema_id}&limit=1
-   → Gets count from response.total
+   → Checks if files array has items to determine if user has files for that schema
 
 3. Present organized list:
    Your Data:
@@ -357,8 +354,9 @@ All list operations use consistent pagination:
 
 * **Default**: `limit=10`, `offset=0`  
 * **Maximum**: `limit=100`  
-* **Response format**: `{items: [...], total: N, limit: L, offset: O}`  
+* **Response format**: `{items: [...], limit: L, offset: O}`  
 * **Strategy**: Offset-based (not cursor-based)
+* **Note**: Total counts are not available from the subgraph query. To determine if there are more pages, check if `len(results) == limit` (if fewer results than limit, you've reached the end).
 
 ### File Structure
 

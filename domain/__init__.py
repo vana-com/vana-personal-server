@@ -36,6 +36,10 @@ from .exceptions import (
     DecryptionError,
     GrantValidationError,
     OperationError,
+    SubgraphError,
+    SubgraphQueryError,
+    SubgraphConnectionError,
+    SubgraphOwnerMismatchError,
 )
 
 # For backward compatibility and convenience
@@ -66,4 +70,8 @@ __all__ = [
     "DecryptionError",
     "GrantValidationError",
     "OperationError",
+    "SubgraphError",
+    "SubgraphQueryError",
+    "SubgraphConnectionError",
+    "SubgraphOwnerMismatchError",
 ]

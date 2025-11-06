@@ -1,9 +1,9 @@
 import pytest
 from pydantic import ValidationError, BaseModel
-from api.schemas import EthereumAddress
+from api.schemas import EVMAddress
 
 class TestModel(BaseModel):
-    address: EthereumAddress
+    address: EVMAddress
 
 def test_valid_ethereum_address():
     valid = "0x1234567890abcdef1234567890abcdef12345678"
