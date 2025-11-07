@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.operations import router as operations_router
 from api.identity import router as identity_router
 from api.artifacts import router as artifacts_router
+from mcp_server.server import mcp
 
 # Configure logging
 logging.basicConfig(
@@ -23,10 +24,17 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+logger = logging.getLogger(__name__)
+
+mcp_app = mcp.http_app(path='/')
+
+
+
 app = FastAPI(
     title="Vana Personal-Server API",
     version="0.1.0",
-    description="A user-scoped compute service that executes permissioned operations on private data."
+    description="A user-scoped compute service that executes permissioned operations on private data.",
+    lifespan=mcp_app.lifespan
 )
 
 app.add_middleware(
@@ -49,6 +57,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(operations_router, prefix="/api/v1")
 app.include_router(identity_router, prefix="/api/v1")
 app.include_router(artifacts_router, prefix="/api/v1")
+
+app.mount("/mcp", mcp_app)
+
 
 if __name__ == "__main__":
     import uvicorn

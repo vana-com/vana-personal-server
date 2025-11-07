@@ -83,3 +83,38 @@ class OperationError(VanaAPIError):
     def __init__(self, message: str, operation_id: Optional[str] = None):
         super().__init__(message, "OPERATION_ERROR", 500)
         self.operation_id = operation_id
+
+
+class SubgraphError(VanaAPIError):
+    """Base exception for subgraph-related errors"""
+    
+    def __init__(self, message: str, error_code: str = "SUBGRAPH_ERROR", status_code: int = 500):
+        super().__init__(message, error_code, status_code)
+
+
+class SubgraphQueryError(SubgraphError):
+    """Raised when GraphQL query fails"""
+    
+    def __init__(self, message: str, query: Optional[str] = None, variables: Optional[dict] = None):
+        super().__init__(message, "SUBGRAPH_QUERY_ERROR", 502)
+        self.query = query
+        self.variables = variables
+
+
+class SubgraphConnectionError(SubgraphError):
+    """Raised when subgraph connection fails"""
+    
+    def __init__(self, message: str, url: Optional[str] = None):
+        super().__init__(message, "SUBGRAPH_CONNECTION_ERROR", 502)
+        self.url = url
+
+
+class SubgraphOwnerMismatchError(AuthorizationError):
+    """Raised when file owner doesn't match requested owner"""
+    
+    def __init__(self, file_id: int, expected_owner: str, actual_owner: str):
+        message = f"File {file_id} owner mismatch: expected {expected_owner}, got {actual_owner}"
+        super().__init__(message)
+        self.file_id = file_id
+        self.expected_owner = expected_owner
+        self.actual_owner = actual_owner

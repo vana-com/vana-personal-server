@@ -269,6 +269,12 @@ class Settings(BaseSettings):
         description="CPU limit for Docker agents (e.g., '0.5', '1.0', '2.0')"
     )
 
+    subgraph_url: str = Field(
+        default="https://moksha.vanagraph.io",
+        alias="SUBGRAPH_URL",
+        description="GraphQL endpoint for Vana subgraph"
+    )
+
     # Agent Runtime Configuration
     agent_runtime: str = Field(
         default="process",
