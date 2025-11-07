@@ -23,24 +23,20 @@ class TestMCPServerStructure:
         """Test that authentication is configured."""
         assert server.mcp.auth is not None
 
-    def test_tools_registered(self):
+    @pytest.mark.asyncio
+    async def test_tools_registered(self):
         """Test that all required tools are registered."""
-        # Get tool names from MCP instance
-        # Note: This depends on FastMCP's internal structure
-        # Adjust based on actual FastMCP API
-
-        # Expected tools
-        expected_tools = [
+        expected_tools = {
             "list_files",
             "search_files_by_schema",
             "get_file",
             "get_file_metadata",
             "list_schemas",
-        ]
+            "get_schema",
+        }
 
-        # This is a basic structural test
-        # Actual tool registration testing may require FastMCP test utilities
-        assert True  # Placeholder
+        tools = await server.mcp.get_tools()
+        assert set(tools.keys()) == expected_tools
 
 
 class TestSubgraphClient:
@@ -70,15 +66,22 @@ class TestSubgraphClient:
         assert result["offset"] == 0
 
     @pytest.mark.asyncio
-    async def test_get_file_metadata_returns_none(self):
-        """Test that get_file_metadata stub returns None."""
+    async def test_get_file_metadata_returns_none(self, monkeypatch):
+        """Test that get_file_metadata returns None when subgraph has no record."""
         client = SubgraphClient()
+
+        async def fake_query(query, variables):
+            return {"file": None}
+
+        monkeypatch.setattr(client, "_query", fake_query)
+
         result = await client.get_file_metadata(
             file_id=123,
             owner_address="0x1234567890123456789012345678901234567890"
         )
 
-        assert result is None  # Stub returns None
+        assert result is None
+        await client.close()
 
     @pytest.mark.asyncio
     async def test_list_schemas_returns_empty(self):
@@ -94,12 +97,19 @@ class TestSubgraphClient:
         assert result["offset"] == 0
 
     @pytest.mark.asyncio
-    async def test_get_schema_returns_none(self):
-        """Test that get_schema stub returns None."""
+    async def test_get_schema_returns_none(self, monkeypatch):
+        """Test that get_schema returns None when subgraph has no match."""
         client = SubgraphClient()
+
+        async def fake_query(query, variables):
+            return {"schema": None}
+
+        monkeypatch.setattr(client, "_query", fake_query)
+
         result = await client.get_schema(schema_id=1)
 
-        assert result is None  # Stub returns None
+        assert result is None
+        await client.close()
 
     @pytest.mark.asyncio
     async def test_client_cleanup(self):

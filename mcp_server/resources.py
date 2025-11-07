@@ -55,6 +55,59 @@ class ResourceHandler:
         self.identity_service = IdentityService()
         self.schema_cache = SchemaCache()
 
+    async def _load_schema_into_cache(
+        self,
+        schema_id: int,
+        schema_metadata: Optional[dict] = None
+    ) -> Optional[CachedSchema]:
+        """Fetch schema definition + metadata and store it in the cache."""
+        metadata = schema_metadata or await self.schema_cache._get_schema_metadata(schema_id)
+        if metadata is None:
+            return None
+
+        schema_def = await self.subgraph.get_schema(schema_id)
+        if not schema_def:
+            return None
+
+        return self._cache_schema_from_definition(schema_def, metadata)
+
+    def _cache_schema_from_definition(
+        self,
+        schema_def: dict,
+        schema_metadata: Optional[dict] = None
+    ) -> CachedSchema:
+        """Normalize schema definition/metadata into CachedSchema and store it."""
+        metadata = schema_metadata or {}
+        schema_id_raw = schema_def.get("schema_id") or metadata.get("id")
+        if schema_id_raw is None:
+            raise ValueError("Unable to determine schema_id for caching")
+        schema_id = int(schema_id_raw)
+
+        dialect = metadata.get("dialect", schema_def.get("dialect", "json"))
+        definition_url = metadata.get("definitionUrl", schema_def.get("ipfs_url", ""))
+        created_at = metadata.get("createdAt", "")
+        subgraph_name = metadata.get("name", "")
+
+        ipfs_name = schema_def.get("name", "")
+        schema_content_raw = schema_def.get("schema", {})
+        if isinstance(schema_content_raw, dict):
+            schema_content_str = json.dumps(schema_content_raw)
+        else:
+            schema_content_str = str(schema_content_raw)
+
+        cached = CachedSchema(
+            schema_id=schema_id,
+            name=ipfs_name if ipfs_name else subgraph_name,
+            dialect=dialect,
+            definition_url=definition_url,
+            created_at=created_at,
+            version=schema_def.get("version"),
+            description=schema_def.get("description", ""),
+            schema_content=schema_content_str
+        )
+        self.schema_cache[schema_id] = cached
+        return cached
+
 
     async def read_files_resource(self, uri: str, wallet_address: str) -> str:
         """
@@ -366,16 +419,26 @@ class ResourceHandler:
             enriched_schemas = []
             for schema_info in schemas:
                 schema_id = schema_info["schema_id"]
-                
-                # Use cached values if available, otherwise fallback to subgraph values
+
                 cached = self.schema_cache.get(schema_id)
-                enriched_schema = {
+                if not cached or not cached.description:
+                    try:
+                        cached = await self._load_schema_into_cache(schema_id)
+                    except Exception as err:
+                        logger.warning(f"Failed to hydrate schema {schema_id} description: {err}")
+
+                if cached:
+                    name = cached.name or schema_info.get("name", "")
+                    description = cached.description or ""
+                else:
+                    name = schema_info.get("name", "")
+                    description = ""
+
+                enriched_schemas.append({
                     "schema_id": schema_id,
-                    "name": cached.name if cached and cached.name else schema_info.get("name", ""),
-                    "description": cached.description if cached else ""
-                }
-                
-                enriched_schemas.append(enriched_schema)
+                    "name": name,
+                    "description": description
+                })
             
             all_schemas.extend(enriched_schemas)
             
@@ -432,59 +495,25 @@ class ResourceHandler:
             raise ValueError(f"Invalid schema_id: {path_parts[1]}")
 
         # Check cache first
-        if schema_id in self.schema_cache:
-            cached = self.schema_cache[schema_id]
-            
-            # If content is already loaded, return from cache
-            if cached.is_content_loaded():
-                logger.debug(f"Returning schema {schema_id} from cache")
-                # Parse schema_content as JSON if dialect is json, otherwise return as string
-                try:
-                    if cached.dialect == "json":
-                        schema_obj = json.loads(cached.schema_content)
-                    else:
-                        schema_obj = cached.schema_content
-                except (json.JSONDecodeError, TypeError):
-                    # If parsing fails, return as string
+        cached = self.schema_cache.get(schema_id)
+        if cached and cached.is_content_loaded():
+            logger.debug(f"Returning schema {schema_id} from cache")
+            try:
+                if cached.dialect == "json":
+                    schema_obj = json.loads(cached.schema_content)
+                else:
                     schema_obj = cached.schema_content
-                
-                return json.dumps({
-                    "schema_id": cached.schema_id,
-                    "name": cached.name,
-                    "version": cached.version or "unknown",
-                    "description": cached.description,
-                    "ipfs_url": cached.definition_url,  # Keep ipfs_url for API compatibility
-                    "schema": schema_obj
-                }, indent=2)
-            else:
-                # Cache has metadata but not content, fetch content and update cache
-                logger.debug(f"Schema {schema_id} metadata in cache, fetching content")
-                schema_def = await self.subgraph.get_schema(schema_id)
-                if schema_def:
-                    # Convert schema content to string for storage
-                    schema_content_raw = schema_def.get("schema", {})
-                    if isinstance(schema_content_raw, dict):
-                        schema_content_str = json.dumps(schema_content_raw)
-                    else:
-                        schema_content_str = str(schema_content_raw)
-                    
-                    # Update cache with content
-                    cached.version = schema_def.get("version")
-                    cached.description = schema_def.get("description", "") or cached.description
-                    cached.schema_content = schema_content_str
-                    # Prioritize name from IPFS if available
-                    ipfs_name = schema_def.get("name", "")
-                    if ipfs_name:
-                        cached.name = ipfs_name
-                    
-                    return json.dumps({
-                        "schema_id": schema_def["schema_id"],
-                        "name": schema_def.get("name", ""),
-                        "version": schema_def.get("version", "unknown"),
-                        "description": schema_def.get("description", ""),
-                        "ipfs_url": schema_def.get("ipfs_url", ""),  # Keep ipfs_url for API compatibility
-                        "schema": schema_def.get("schema", {})
-                    }, indent=2)
+            except (json.JSONDecodeError, TypeError):
+                schema_obj = cached.schema_content
+
+            return json.dumps({
+                "schema_id": cached.schema_id,
+                "name": cached.name,
+                "version": cached.version or "unknown",
+                "description": cached.description,
+                "ipfs_url": cached.definition_url,
+                "schema": schema_obj
+            }, indent=2)
 
         # Not in cache, fetch metadata from subgraph first (to get dialect and definitionUrl)
         schema_metadata = await self.schema_cache._get_schema_metadata(schema_id)
@@ -493,13 +522,7 @@ class ResourceHandler:
                 f"Schema ID {schema_id} does not exist in the network. "
                 "Call list_schemas() to see available schemas."
             )
-        
-        dialect = schema_metadata.get("dialect", "json")
-        definition_url = schema_metadata.get("definitionUrl", "")
-        created_at = schema_metadata.get("createdAt", "")
-        subgraph_name = schema_metadata.get("name", "")
-        
-        # Then fetch full schema definition from IPFS (includes description)
+
         schema = await self.subgraph.get_schema(schema_id)
 
         if not schema:
@@ -508,30 +531,16 @@ class ResourceHandler:
                 "Call list_schemas() to see available schemas."
             )
 
-        # Store in cache for future use
-        # Prioritize name from IPFS, use subgraph name as fallback
-        ipfs_name = schema.get("name", "")
-        
-        # Convert schema content to string for storage (supports all dialects)
-        schema_content_raw = schema.get("schema", {})
-        if isinstance(schema_content_raw, dict):
-            schema_content_str = json.dumps(schema_content_raw)
-        else:
-            schema_content_str = str(schema_content_raw)
-        
-        cached = CachedSchema(
-            schema_id=schema["schema_id"],
-            name=ipfs_name if ipfs_name else subgraph_name,
-            dialect=dialect,  # From subgraph
-            definition_url=definition_url,  # From subgraph (definitionUrl)
-            created_at=created_at,  # From subgraph
-            version=schema.get("version"),
-            description=schema.get("description", ""),  # Only from IPFS
-            schema_content=schema_content_str  # Store as string
-        )
-        self.schema_cache[schema_id] = cached
+        cached = self._cache_schema_from_definition(schema, schema_metadata)
 
-        return json.dumps(schema, indent=2)
+        return json.dumps({
+            "schema_id": cached.schema_id,
+            "name": schema.get("name", cached.name),
+            "version": schema.get("version", cached.version or "unknown"),
+            "description": schema.get("description", cached.description),
+            "ipfs_url": schema.get("ipfs_url", cached.definition_url),
+            "schema": schema.get("schema", {})
+        }, indent=2)
 
 
 # Singleton instance

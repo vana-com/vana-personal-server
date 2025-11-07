@@ -10,23 +10,23 @@ This service provides methods to:
 All methods return structured data that matches the MCP resource/tool specifications.
 """
 
-import asyncio
 import logging
 from typing import Optional
 import httpx
 from graphql_query import Operation, Query, Argument, Variable, Field
 from settings import settings
-from utils.ipfs import fetch_json_with_fallbacks, IPFSError
+from utils.ipfs import (
+    fetch_json_with_fallbacks_async,
+    IPFSError,
+)
 from domain.exceptions import (
     SubgraphQueryError,
     SubgraphConnectionError,
     SubgraphOwnerMismatchError,
-    NotFoundError,
 )
 from domain.subgraph_types import (
     SubgraphFileMetadata,
     SubgraphFileListResponse,
-    SubgraphSchemaInfo,
     SubgraphSchemaListResponse,
     SubgraphSchemaDefinition,
     parse_file_metadata,
@@ -48,10 +48,12 @@ class SubgraphClient:
         """
         self.subgraph_url = subgraph_url or settings.subgraph_url
         self.client = httpx.AsyncClient(timeout=30.0)
+        self.ipfs_client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
 
     async def close(self):
         """Close the HTTP client."""
         await self.client.aclose()
+        await self.ipfs_client.aclose()
 
     async def _query(self, query: str, variables: Optional[dict] = None) -> dict:
         """
@@ -458,15 +460,11 @@ class SubgraphClient:
             Parsed schema definition or None if fetch fails
         """
         try:
-            # Run synchronous IPFS fetch in executor
-            loop = asyncio.get_event_loop()
-            ipfs_data = await loop.run_in_executor(
-                None,
-                fetch_json_with_fallbacks,
+            return await fetch_json_with_fallbacks_async(
                 ipfs_url,
-                10  # timeout
+                timeout=10,
+                client=self.ipfs_client
             )
-            return ipfs_data
         except IPFSError as e:
             logger.error(f"IPFS error fetching schema from {ipfs_url}: {e}")
             return None

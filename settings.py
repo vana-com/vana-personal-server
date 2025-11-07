@@ -270,7 +270,7 @@ class Settings(BaseSettings):
     )
 
     subgraph_url: str = Field(
-        default="https://vanagraph.io" if chain_id == 1480 else "https://moksha.vanagraph.io",
+        default="https://moksha.vanagraph.io",
         alias="SUBGRAPH_URL",
         description="GraphQL endpoint for Vana subgraph"
     )

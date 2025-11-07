@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any, Union
 from urllib.parse import urlparse
 import requests
 from requests.exceptions import RequestException, Timeout, HTTPError
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +263,87 @@ def fetch_with_fallbacks(
         raise IPFSRateLimitError(error_msg)
     else:
         raise IPFSError(error_msg)
+
+
+async def fetch_json_with_fallbacks_async(
+    url: str,
+    timeout: int = DEFAULT_TIMEOUT,
+    retry_delay: int = DEFAULT_RETRY_DELAY,
+    max_retries: Optional[int] = None,
+    headers: Optional[Dict[str, str]] = None,
+    client: Optional[httpx.AsyncClient] = None
+) -> Dict[str, Any]:
+    """Async variant of fetch_json_with_fallbacks using httpx."""
+
+    request_headers = headers or {}
+    hash_value = extract_ipfs_hash(url)
+
+    owns_client = False
+    http_client = client
+    if http_client is None:
+        http_client = httpx.AsyncClient(follow_redirects=True)
+        owns_client = True
+
+    async def _get_json(request_url: str) -> Dict[str, Any]:
+        response = await http_client.get(request_url, timeout=timeout, headers=request_headers)
+        if response.status_code == 404:
+            raise IPFSNotFoundError(f"Content not found at {request_url}")
+        if response.status_code == 429:
+            raise IPFSRateLimitError(f"Rate limited at {request_url}")
+        response.raise_for_status()
+        try:
+            return response.json()
+        except ValueError as exc:  # pragma: no cover - defensive guard
+            raise IPFSError(f"Invalid JSON content from {request_url}: {exc}")
+
+    async def _handle_non_ipfs() -> Dict[str, Any]:
+        try:
+            return await _get_json(url)
+        except httpx.TimeoutException as exc:
+            raise IPFSTimeoutError(f"Timeout fetching {url}: {exc}")
+        except IPFSError:
+            raise
+        except httpx.RequestError as exc:
+            raise IPFSError(f"HTTP error fetching {url}: {exc}")
+
+    try:
+        if not hash_value:
+            return await _handle_non_ipfs()
+
+        gateway_urls = get_gateway_urls(hash_value)
+        if max_retries is None:
+            max_retries = len(gateway_urls)
+
+        last_error: Optional[Exception] = None
+
+        for i, gateway_url in enumerate(gateway_urls[:max_retries]):
+            try:
+                return await _get_json(gateway_url)
+            except (IPFSNotFoundError, IPFSRateLimitError, IPFSError) as exc:
+                last_error = exc
+            except httpx.TimeoutException:
+                last_error = IPFSTimeoutError(f"Timeout at gateway: {gateway_url}")
+            except httpx.RequestError as exc:
+                last_error = IPFSError(f"Request error at gateway {gateway_url}: {exc}")
+
+            if i < len(gateway_urls) - 1:
+                delay = min(retry_delay * (2 ** i), MAX_RETRY_DELAY)
+                await asyncio.sleep(delay)
+
+        error_msg = f"All IPFS gateways failed for hash {hash_value}"
+        if last_error:
+            error_msg += f". Last error: {last_error}"
+
+        if isinstance(last_error, IPFSTimeoutError):
+            raise IPFSTimeoutError(error_msg)
+        if isinstance(last_error, IPFSNotFoundError):
+            raise IPFSNotFoundError(error_msg)
+        if isinstance(last_error, IPFSRateLimitError):
+            raise IPFSRateLimitError(error_msg)
+        raise IPFSError(error_msg)
+    finally:
+        if owns_client and http_client:
+            await http_client.aclose()
 
 
 def fetch_json_with_fallbacks(

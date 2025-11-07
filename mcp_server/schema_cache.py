@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Cache configuration
 SCHEMA_CACHE_SIZE = 100
+SCHEMA_PREFETCH_CONCURRENCY = 5
 
 
 @dataclass
@@ -112,9 +113,9 @@ class SchemaCache:
             offset = 0
             limit = 100
             schemas_added = 0
+            semaphore = asyncio.Semaphore(SCHEMA_PREFETCH_CONCURRENCY)
             
             while schemas_added < SCHEMA_CACHE_SIZE:
-                # Fetch schemas with dialect="json"
                 try:
                     result = await self.subgraph.list_schemas(
                         query=None,
@@ -122,78 +123,86 @@ class SchemaCache:
                         limit=limit,
                         offset=offset
                     )
-                    
                     schemas = result.get("schemas", [])
                     if not schemas:
-                        # No more schemas to fetch
                         break
-                    
-                    # Process each schema
+
+                    tasks = []
                     for schema_info in schemas:
-                        if schemas_added >= SCHEMA_CACHE_SIZE:
+                        if len(self.cache) >= SCHEMA_CACHE_SIZE:
                             break
-                        
                         schema_id = schema_info["schema_id"]
-                        
-                        # Skip if already in cache
                         if schema_id in self.cache:
                             continue
-                        
-                        try:
-                            # First get schema metadata from subgraph (includes dialect and definitionUrl)
-                            schema_metadata = await self._get_schema_metadata(schema_id)
-                            if not schema_metadata:
-                                continue
-                            
-                            dialect = schema_metadata.get("dialect", "json")
-                            definition_url = schema_metadata.get("definitionUrl", "")
-                            created_at = schema_metadata.get("createdAt", "")
-                            subgraph_name = schema_metadata.get("name", "")
-                            
-                            # Then fetch full schema definition from IPFS (includes description)
-                            schema_def = await self.subgraph.get_schema(schema_id)
-                            if schema_def:
-                                # Prioritize name and description from IPFS schema
-                                ipfs_name = schema_def.get("name", "")
-                                ipfs_description = schema_def.get("description", "")  # Only in IPFS
-                                
-                                # Convert schema content to string (supports all dialects)
-                                schema_content_raw = schema_def.get("schema", {})
-                                if isinstance(schema_content_raw, dict):
-                                    schema_content_str = json.dumps(schema_content_raw)
-                                else:
-                                    schema_content_str = str(schema_content_raw)
-                                
-                                # Create cache entry with full content
-                                cached = CachedSchema(
-                                    schema_id=schema_id,
-                                    name=ipfs_name if ipfs_name else subgraph_name,
-                                    dialect=dialect,  # From subgraph
-                                    definition_url=definition_url,  # From subgraph (definitionUrl)
-                                    created_at=created_at,  # From subgraph
-                                    version=schema_def.get("version"),
-                                    description=ipfs_description,  # Only from IPFS
-                                    schema_content=schema_content_str  # Store as string
-                                )
-                                self.cache[schema_id] = cached
-                                schemas_added += 1
-                        except Exception as e:
-                            logger.warning(f"Failed to fetch schema {schema_id} for cache prepopulation: {e}")
-                            continue
-                    
-                    # If we got fewer schemas than requested, we're done
-                    if len(schemas) < limit:
+                        tasks.append(
+                            asyncio.create_task(
+                                self._load_schema_for_cache(schema_info, semaphore)
+                            )
+                        )
+
+                    if tasks:
+                        results = await asyncio.gather(*tasks)
+                        schemas_added += sum(results)
+
+                    if len(schemas) < limit or len(self.cache) >= SCHEMA_CACHE_SIZE:
                         break
-                    
+
                     offset += limit
-                    
+
                 except Exception as e:
                     logger.error(f"Error during schema cache prepopulation: {e}")
                     break
-            
-            logger.info(f"Schema cache prepopulation completed. Added {schemas_added} schemas to cache.")
+
+            logger.info(
+                f"Schema cache prepopulation completed. Added {schemas_added} schemas to cache."
+            )
         except Exception as e:
             logger.error(f"Unexpected error in schema cache prepopulation: {e}")
+
+    async def _load_schema_for_cache(self, schema_info: dict, semaphore: asyncio.Semaphore) -> int:
+        """Fetch schema metadata + definition and cache it. Returns 1 if cached."""
+        schema_id = schema_info["schema_id"]
+        if schema_id in self.cache:
+            return 0
+
+        async with semaphore:
+            try:
+                schema_metadata = await self._get_schema_metadata(schema_id)
+                if not schema_metadata:
+                    return 0
+
+                schema_def = await self.subgraph.get_schema(schema_id)
+                if not schema_def:
+                    return 0
+
+                dialect = schema_metadata.get("dialect", "json")
+                definition_url = schema_metadata.get("definitionUrl", "")
+                created_at = schema_metadata.get("createdAt", "")
+                subgraph_name = schema_metadata.get("name", "")
+
+                ipfs_name = schema_def.get("name", "")
+                ipfs_description = schema_def.get("description", "")
+                schema_content_raw = schema_def.get("schema", {})
+                if isinstance(schema_content_raw, dict):
+                    schema_content_str = json.dumps(schema_content_raw)
+                else:
+                    schema_content_str = str(schema_content_raw)
+
+                cached = CachedSchema(
+                    schema_id=schema_id,
+                    name=ipfs_name if ipfs_name else subgraph_name,
+                    dialect=dialect,
+                    definition_url=definition_url,
+                    created_at=created_at,
+                    version=schema_def.get("version"),
+                    description=ipfs_description,
+                    schema_content=schema_content_str
+                )
+                self.cache[schema_id] = cached
+                return 1
+            except Exception as exc:
+                logger.warning(f"Failed to fetch schema {schema_id} for cache prepopulation: {exc}")
+                return 0
     
     async def _get_schema_metadata(self, schema_id: int) -> Optional[dict]:
         """
@@ -230,4 +239,3 @@ class SchemaCache:
         except Exception as e:
             logger.error(f"Error getting schema metadata for {schema_id}: {e}")
             return None
-
