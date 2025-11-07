@@ -7,6 +7,7 @@ Tools provide functions for search, filtering, and aggregation:
 - get_file: Retrieve decrypted file content with optional filtering
 - get_file_metadata: Get file metadata without decryption
 - list_schemas: List all available schemas with optional search
+- get_schema: Get schema definition details by schema ID
 """
 
 import json
@@ -128,9 +129,9 @@ class ToolHandler:
         if offset < 0:
             raise ValueError("offset must be non-negative")
 
-        # Step 1: Search schemas
+        # Step 1: Search schemas (schemas are public, no auth required)
         schemas_uri = f"vana://schemas?query={query}&limit={limit}&offset={offset}"
-        schemas_result_json = await self.resource_handler.read_schemas_resource(schemas_uri, wallet_address)
+        schemas_result_json = await self.resource_handler.read_schemas_resource(schemas_uri)
         schemas_result = json.loads(schemas_result_json)
 
         if len(schemas_result.get('schemas', [])) == 0:
@@ -254,7 +255,6 @@ class ToolHandler:
 
     async def list_schemas(
         self,
-        wallet_address: str,
         query: Optional[str] = None,
         limit: int = 10,
         offset: int = 0
@@ -263,7 +263,6 @@ class ToolHandler:
         List all available schemas with optional keyword search.
 
         Args:
-            wallet_address: Authenticated wallet address
             query: Optional keyword to filter schemas
             limit: Number of results (default: 10)
             offset: Starting position (default: 0)
@@ -298,9 +297,44 @@ class ToolHandler:
         params.append(f"offset={offset}")
 
         uri = f"vana://schemas?{'&'.join(params)}"
+        logger.info(f"[LIST_SCHEMAS] uri: {uri}")
 
-        # Read resource
-        result_json = await self.resource_handler.read_schemas_resource(uri, wallet_address)
+        # Read resource (schemas are public, no auth required)
+        result_json = await self.resource_handler.read_schemas_resource(uri)
+        return json.loads(result_json)
+
+    async def get_schema(
+        self,
+        schema_id: int
+    ) -> dict:
+        """
+        Get schema definition details including name, version, description, and schema structure.
+
+        Args:
+            schema_id: The schema ID to retrieve
+
+        Returns:
+            {
+                "schema_id": 5,
+                "name": "ChatGPT Conversations",
+                "version": "1.0.0",
+                "description": "Chat history and memories from ChatGPT",
+                "ipfs_url": "ipfs://...",
+                "schema": {
+                    "type": "object",
+                    "properties": {...}
+                }
+            }
+
+        Raises:
+            ValueError: If schema_id is invalid or schema not found
+        """
+        # Build resource URI
+        uri = f"vana://schema/{schema_id}"
+        logger.info(f"[GET_SCHEMA] uri: {uri}")
+
+        # Read resource (schemas are public, no auth required)
+        result_json = await self.resource_handler.read_schema_resource(uri)
         return json.loads(result_json)
 
 

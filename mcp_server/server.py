@@ -151,8 +151,21 @@ async def list_schemas(
     Returns:
         Dictionary with schemas list and pagination info (limit, offset)
     """
-    wallet_address = _get_wallet_address()
-    return await _tool_handler.list_schemas(wallet_address, query, limit, offset)
+    return await _tool_handler.list_schemas(query, limit, offset)
+
+
+@mcp.tool()
+async def get_schema(schema_id: int) -> dict:
+    """
+    Get schema definition details including name, version, description, and schema structure.
+
+    Args:
+        schema_id: The schema ID to retrieve
+
+    Returns:
+        Dictionary with schema_id, name, version, description, ipfs_url, and schema structure
+    """
+    return await _tool_handler.get_schema(schema_id)
 
 
 # ============================================================================
@@ -204,9 +217,8 @@ async def read_schema_resource(schema_id: int) -> str:
     Returns:
         Schema definition as JSON string
     """
-    wallet_address = _get_wallet_address()
     uri = f"vana://schema/{schema_id}"
-    return await _resource_handler.read_schema_resource(uri, wallet_address)
+    return await _resource_handler.read_schema_resource(uri)
 
 
 # ============================================================================

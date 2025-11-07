@@ -14,6 +14,7 @@ import asyncio
 import logging
 from typing import Optional
 import httpx
+from graphql_query import Operation, Query, Argument, Variable, Field
 from settings import settings
 from utils.ipfs import fetch_json_with_fallbacks, IPFSError
 from domain.exceptions import (
@@ -122,71 +123,69 @@ class SubgraphClient:
         Returns:
             SubgraphFileListResponse with files, limit, and offset
         """
-        # Normalize owner address
         owner_address = owner_address.lower()
         
-        # Build variables for GraphQL query
-        variables = {
+        limit_val = min(limit, 100)  # Max 100 per The Graph
+        
+        owner_var = Variable(name="owner", type="String!")
+        limit_var = Variable(name="limit", type="Int!")
+        skip_var = Variable(name="skip", type="Int!")
+        
+        variables_list = [owner_var, limit_var, skip_var]
+        variables_dict = {
             "owner": owner_address,
-            "limit": min(limit, 100),  # Max 100 per The Graph
+            "limit": limit_val,
             "skip": offset,
         }
         
-        if schema_ids and len(schema_ids) > 0:
-            # Convert int list to string list for GraphQL BigInt
-            variables["schemaIds"] = [str(sid) for sid in schema_ids]
+        # Build where clause as GraphQL object literal
+        where_clause_parts = [
+            "owner: $owner",
+            'schemaId_gt: "0"',
+        ]
         
-        # Build GraphQL query - use different queries based on whether schema_ids is provided
         if schema_ids and len(schema_ids) > 0:
-            query = """
-            query ListFiles($owner: String!, $schemaIds: [BigInt!], $limit: Int!, $skip: Int!) {
-              files(
-                where: {
-                  owner: $owner
-                  schemaId_gt: "0"
-                  schemaId_in: $schemaIds
-                }
-                first: $limit
-                skip: $skip
-                orderBy: addedAtTimestamp
-                orderDirection: desc
-              ) {
-                id
-                owner {
-                  id
-                }
-                url
-                schemaId
-                addedAtTimestamp
-              }
-            }
-            """
-        else:
-            query = """
-            query ListFiles($owner: String!, $limit: Int!, $skip: Int!) {
-              files(
-                where: {
-                  owner: $owner
-                  schemaId_gt: "0"
-                }
-                first: $limit
-                skip: $skip
-                orderBy: addedAtTimestamp
-                orderDirection: desc
-              ) {
-                id
-                owner {
-                  id
-                }
-                url
-                schemaId
-                addedAtTimestamp
-              }
-            }
-            """
+            schema_ids_var = Variable(name="schemaIds", type="[BigInt!]")
+            variables_list.append(schema_ids_var)
+            variables_dict["schemaIds"] = [str(sid) for sid in schema_ids]
+            where_clause_parts.append("schemaId_in: $schemaIds")
+        
+        where_clause = "{" + ", ".join(where_clause_parts) + "}"
+        
+        files_args = [
+            Argument(name="where", value=where_clause),
+            Argument(name="first", value="$limit"),
+            Argument(name="skip", value="$skip"),
+            Argument(name="orderBy", value="addedAtTimestamp"),
+            Argument(name="orderDirection", value="desc"),
+        ]
+        
+        owner_field = Field(name="owner", fields=["id"])
+        files_fields = [
+            "id",
+            owner_field,
+            "url",
+            "schemaId",
+            "addedAtTimestamp",
+        ]
+        
+        files_query = Query(
+            name="files",
+            arguments=files_args,
+            fields=files_fields
+        )
+        
+        operation = Operation(
+            type="query",
+            name="ListFiles",
+            variables=variables_list,
+            queries=[files_query]
+        )
+        
+        query = operation.render()
         
         try:
-            data = await self._query(query, variables)
+            data = await self._query(query, variables_dict)
             files_data = data.get("files", [])
             
             files = [parse_file_metadata(f) for f in files_data]
@@ -216,31 +215,46 @@ class SubgraphClient:
             SubgraphConnectionError: If connection to subgraph fails
             SubgraphOwnerMismatchError: If file owner doesn't match requested owner
         """
-        # Normalize owner address
         owner_address = owner_address.lower()
         
-        query = """
-        query GetFile($id: ID!) {
-          file(id: $id) {
-            id
-            owner {
-              id
-            }
-            url
-            schemaId
-            addedAtTimestamp
-            addedAtBlock
-            transactionHash
-          }
-        }
-        """
-        
-        variables = {
+        id_var = Variable(name="id", type="ID!")
+        variables_list = [id_var]
+        variables_dict = {
             "id": str(file_id)
         }
         
+        file_args = [
+            Argument(name="id", value="$id")
+        ]
+        
+        owner_field = Field(name="owner", fields=["id"])
+        file_fields = [
+            "id",
+            owner_field,
+            "url",
+            "schemaId",
+            "addedAtTimestamp",
+            "addedAtBlock",
+            "transactionHash",
+        ]
+        
+        file_query = Query(
+            name="file",
+            arguments=file_args,
+            fields=file_fields
+        )
+        
+        operation = Operation(
+            type="query",
+            name="GetFile",
+            variables=variables_list,
+            queries=[file_query]
+        )
+        
+        query = operation.render()
+        
         try:
-            data = await self._query(query, variables)
+            data = await self._query(query, variables_dict)
             file_data = data.get("file")
             
             if not file_data:
@@ -265,65 +279,82 @@ class SubgraphClient:
     async def list_schemas(
         self,
         query: Optional[str] = None,
+        dialect: Optional[str] = None,
         limit: int = 10,
         offset: int = 0,
     ) -> SubgraphSchemaListResponse:
         """
-        List all available schemas with optional keyword search.
+        List all available schemas with optional keyword search and dialect filtering.
 
         Args:
             query: Optional keyword to search in schema name and description
+            dialect: Optional dialect filter (e.g., "json")
             limit: Maximum number of results (default: 10, max: 100)
             offset: Starting position for pagination (default: 0)
 
         Returns:
             SubgraphSchemaListResponse with schemas, limit, and offset
         """
-        variables = {
-            "limit": min(limit, 100),  # Max 100 per The Graph
+        limit_val = min(limit, 100)  # Max 100 per The Graph
+        
+        limit_var = Variable(name="limit", type="Int!")
+        skip_var = Variable(name="skip", type="Int!")
+        variables_list = [limit_var, skip_var]
+        variables_dict = {
+            "limit": limit_val,
             "skip": offset,
         }
         
-        # Build query with or without search
+        where_clause_parts = []
         if query and query.strip():
-            graphql_query = """
-            query ListSchemas($query: String!, $limit: Int!, $skip: Int!) {
-              schemas(
-                where: { name_contains_nocase: $query }
-                first: $limit
-                skip: $skip
-                orderBy: createdAt
-                orderDirection: desc
-              ) {
-                id
-                name
-                dialect
-                definitionUrl
-                createdAt
-              }
-            }
-            """
-            variables["query"] = query.strip()
-        else:
-            graphql_query = """
-            query ListSchemas($limit: Int!, $skip: Int!) {
-              schemas(
-                first: $limit
-                skip: $skip
-                orderBy: createdAt
-                orderDirection: desc
-              ) {
-                id
-                name
-                dialect
-                definitionUrl
-                createdAt
-              }
-            }
-            """
+            query_var = Variable(name="query", type="String!")
+            variables_list.append(query_var)
+            variables_dict["query"] = query.strip()
+            where_clause_parts.append("name_contains_nocase: $query")
+        
+        if dialect:
+            dialect_var = Variable(name="dialect", type="String!")
+            variables_list.append(dialect_var)
+            variables_dict["dialect"] = dialect
+            where_clause_parts.append("dialect: $dialect")
+        
+        schemas_args = []
+        if where_clause_parts:
+            where_clause = "{" + ", ".join(where_clause_parts) + "}"
+            schemas_args.append(Argument(name="where", value=where_clause))
+        
+        schemas_args.extend([
+            Argument(name="first", value="$limit"),
+            Argument(name="skip", value="$skip"),
+            Argument(name="orderBy", value="createdAt"),
+            Argument(name="orderDirection", value="desc"),
+        ])
+        
+        schema_fields = [
+            "id",
+            "name",
+            "dialect",
+            "definitionUrl",
+            "createdAt",
+        ]
+        
+        schemas_query = Query(
+            name="schemas",
+            arguments=schemas_args,
+            fields=schema_fields
+        )
+        
+        operation = Operation(
+            type="query",
+            name="ListSchemas",
+            variables=variables_list,
+            queries=[schemas_query]
+        )
+        
+        graphql_query = operation.render()
         
         try:
-            data = await self._query(graphql_query, variables)
+            data = await self._query(graphql_query, variables_dict)
             schemas_data = data.get("schemas", [])
             
             schemas = [parse_schema_info(s) for s in schemas_data]
@@ -347,33 +378,48 @@ class SubgraphClient:
         Returns:
             SubgraphSchemaDefinition or None if schema not found
         """
-        # Step 1: Query subgraph for schema metadata
-        query = """
-        query GetSchema($id: ID!) {
-          schema(id: $id) {
-            id
-            name
-            dialect
-            definitionUrl
-            createdAt
-            createdAtBlock
-            createdTxHash
-          }
-        }
-        """
-        
-        variables = {
+        id_var = Variable(name="id", type="ID!")
+        variables_list = [id_var]
+        variables_dict = {
             "id": str(schema_id)
         }
         
+        schema_args = [
+            Argument(name="id", value="$id")
+        ]
+        
+        schema_fields = [
+            "id",
+            "name",
+            "dialect",
+            "definitionUrl",
+            "createdAt",
+            "createdAtBlock",
+            "createdTxHash",
+        ]
+        
+        schema_query = Query(
+            name="schema",
+            arguments=schema_args,
+            fields=schema_fields
+        )
+        
+        operation = Operation(
+            type="query",
+            name="GetSchema",
+            variables=variables_list,
+            queries=[schema_query]
+        )
+        
+        query = operation.render()
+        
         try:
-            data = await self._query(query, variables)
+            data = await self._query(query, variables_dict)
             schema_data = data.get("schema")
             
             if not schema_data:
                 return None
             
-            # Step 2: Fetch schema definition from IPFS
             ipfs_url = schema_data["definitionUrl"]
             ipfs_data = await self._fetch_ipfs_schema(ipfs_url)
             

@@ -26,6 +26,7 @@ from utils.files.download import download_file
 from domain.exceptions import DecryptionError
 from jsonpath_ng import parse as jsonpath_parse
 from settings import Settings, get_settings
+from mcp_server.schema_cache import SchemaCache, CachedSchema
 
 logger = logging.getLogger(__name__)
 
@@ -52,20 +53,23 @@ class ResourceHandler:
         self.web3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(self.chain.url))
         self.data_registry = DataRegistry(self.chain, self.web3)
         self.identity_service = IdentityService()
+        self.schema_cache = SchemaCache()
 
 
     async def read_files_resource(self, uri: str, wallet_address: str) -> str:
         """
         Read vana://files resource with optional filtering.
+        
+        Paginates through all files until no more results are available.
 
-        URI format: vana://files?schema_ids=1,2,3&limit=10&offset=0
+        URI format: vana://files?schema_ids=1,2,3
 
         Args:
             uri: The resource URI
             wallet_address: Authenticated wallet address
 
         Returns:
-            JSON string with file list
+            JSON string with file list (all pages combined)
 
         Raises:
             ValueError: If parameters are invalid
@@ -82,21 +86,44 @@ class ResourceHandler:
             except (ValueError, IndexError):
                 raise ValueError("Invalid schema_ids parameter. Must be comma-separated integers.")
 
-        limit = min(int(params.get('limit', [10])[0]), 100)
-        offset = int(params.get('offset', [0])[0])
+        limit = 100  # Always use max limit for pagination
+        offset = 0
 
         if not wallet_address:
             raise ValueError("Authentication required. No wallet address provided.")
 
-        # Query subgraph for files
-        result = await self.subgraph.list_files(
-            owner_address=wallet_address,
-            schema_ids=schema_ids,
-            limit=limit,
-            offset=offset
-        )
-
-        return json.dumps(result, indent=2)
+        all_files = []
+        
+        # Paginate through all files
+        while True:
+            # Query subgraph for files
+            result = await self.subgraph.list_files(
+                owner_address=wallet_address,
+                schema_ids=schema_ids,
+                limit=limit,
+                offset=offset
+            )
+            
+            files = result.get("files", [])
+            if not files:
+                # No more files
+                break
+            
+            all_files.extend(files)
+            
+            # If we got fewer files than requested, we're done
+            if len(files) < limit:
+                break
+            
+            offset += limit
+        
+        # Return combined result
+        return json.dumps({
+            "files": all_files,
+            "limit": limit,
+            "offset": 0,
+            "total": len(all_files)
+        }, indent=2)
 
 
     async def read_file_content_resource(self, uri: str, wallet_address: str) -> str:
@@ -202,6 +229,19 @@ class ResourceHandler:
 
         # Apply JSONPath filter if provided
         if filter_expr:
+            # Check schema dialect - JSON filtering only works for JSON schemas
+            schema_id = metadata.get('schema_id')
+            if schema_id:
+                schema_metadata = await self.schema_cache._get_schema_metadata(schema_id)
+                if schema_metadata:
+                    dialect = schema_metadata.get("dialect", "json")
+                    if dialect != "json":
+                        raise ValueError(
+                            f"JSONPath filtering is only supported for JSON dialect schemas. "
+                            f"Schema {schema_id} has dialect '{dialect}'. "
+                            "Remove the filter parameter to retrieve the full content."
+                        )
+            
             try:
                 # Parse content as JSON
                 content_json = json.loads(decrypted_content)
@@ -276,46 +316,94 @@ class ResourceHandler:
         return json.dumps(metadata, indent=2)
 
 
-    async def read_schemas_resource(self, uri: str, wallet_address: str) -> str:
+    async def read_schemas_resource(self, uri: str, wallet_address: Optional[str] = None) -> str:
         """
-        Read vana://schemas resource with optional search.
+        Read vana://schemas resource with optional search and dialect filtering.
+        
+        Paginates through all schemas until no more results are available.
 
-        URI format: vana://schemas?query=chatgpt&limit=10&offset=0
+        URI format: vana://schemas?query=chatgpt&dialect=json&limit=10&offset=0
 
         Args:
             uri: The resource URI
-            wallet_address: Authenticated wallet address (not used but kept for consistency)
+            wallet_address: Optional wallet address (not used, schemas are public)
 
         Returns:
-            JSON string with schema list
+            JSON string with schema list (all pages combined)
         """
+        # Start background prepopulation if not already started
+        await self.schema_cache.ensure_prepopulate_started()
+        
         # Parse query parameters
         parsed = urlparse(uri)
         params = parse_qs(parsed.query)
 
         query = params.get('query', [None])[0]
-        limit = min(int(params.get('limit', [10])[0]), 100)
-        offset = int(params.get('offset', [0])[0])
+        dialect = params.get('dialect', ['json'])[0]  # Default to "json"
+        limit = 100  # Always use max limit for pagination
+        offset = 0
 
-        # Query subgraph for schemas
-        result = await self.subgraph.list_schemas(
-            query=query,
-            limit=limit,
-            offset=offset
-        )
+        all_schemas = []
+        
+        # Paginate through all schemas
+        while True:
+            # Query subgraph for schemas
+            result = await self.subgraph.list_schemas(
+                query=query,
+                dialect=dialect,
+                limit=limit,
+                offset=offset
+            )
+            
+            schemas = result.get("schemas", [])
+            if not schemas:
+                # No more schemas
+                break
+            
+            # Check cache and enrich with cached data if available
+            # Also need to get raw schema data to cache dialect and definition_url
+            # Query subgraph directly for full metadata
+            enriched_schemas = []
+            for schema_info in schemas:
+                schema_id = schema_info["schema_id"]
+                
+                # Use cached values if available, otherwise fallback to subgraph values
+                cached = self.schema_cache.get(schema_id)
+                enriched_schema = {
+                    "schema_id": schema_id,
+                    "name": cached.name if cached and cached.name else schema_info.get("name", ""),
+                    "description": cached.description if cached else ""
+                }
+                
+                enriched_schemas.append(enriched_schema)
+            
+            all_schemas.extend(enriched_schemas)
+            
+            # If we got fewer schemas than requested, we're done
+            if len(schemas) < limit:
+                break
+            
+            offset += limit
+        
+        # Return combined result
+        return json.dumps({
+            "schemas": all_schemas,
+            "limit": limit,
+            "offset": 0,
+            "total": len(all_schemas)
+        }, indent=2)
 
-        return json.dumps(result, indent=2)
 
-
-    async def read_schema_resource(self, uri: str, wallet_address: str) -> str:
+    async def read_schema_resource(self, uri: str, wallet_address: Optional[str] = None) -> str:
         """
         Read vana://schema/{schema_id} resource.
 
         Fetches schema metadata from subgraph and schema definition from IPFS.
+        Uses cache when available to avoid redundant fetches.
 
         Args:
             uri: The resource URI
-            wallet_address: Authenticated wallet address (not used but kept for consistency)
+            wallet_address: Optional wallet address (not used, schemas are public)
 
         Returns:
             JSON string with schema definition
@@ -323,6 +411,9 @@ class ResourceHandler:
         Raises:
             ValueError: If schema_id is invalid or schema not found
         """
+        # Start background prepopulation if not already started
+        await self.schema_cache.ensure_prepopulate_started()
+        
         # Parse URI
         # Handle custom vana:// scheme - urlparse treats everything after scheme as netloc
         # For vana://schema/123, netloc="schema", path="/123"
@@ -340,7 +431,75 @@ class ResourceHandler:
         except ValueError:
             raise ValueError(f"Invalid schema_id: {path_parts[1]}")
 
-        # Get schema from subgraph (includes IPFS fetch)
+        # Check cache first
+        if schema_id in self.schema_cache:
+            cached = self.schema_cache[schema_id]
+            
+            # If content is already loaded, return from cache
+            if cached.is_content_loaded():
+                logger.debug(f"Returning schema {schema_id} from cache")
+                # Parse schema_content as JSON if dialect is json, otherwise return as string
+                try:
+                    if cached.dialect == "json":
+                        schema_obj = json.loads(cached.schema_content)
+                    else:
+                        schema_obj = cached.schema_content
+                except (json.JSONDecodeError, TypeError):
+                    # If parsing fails, return as string
+                    schema_obj = cached.schema_content
+                
+                return json.dumps({
+                    "schema_id": cached.schema_id,
+                    "name": cached.name,
+                    "version": cached.version or "unknown",
+                    "description": cached.description,
+                    "ipfs_url": cached.definition_url,  # Keep ipfs_url for API compatibility
+                    "schema": schema_obj
+                }, indent=2)
+            else:
+                # Cache has metadata but not content, fetch content and update cache
+                logger.debug(f"Schema {schema_id} metadata in cache, fetching content")
+                schema_def = await self.subgraph.get_schema(schema_id)
+                if schema_def:
+                    # Convert schema content to string for storage
+                    schema_content_raw = schema_def.get("schema", {})
+                    if isinstance(schema_content_raw, dict):
+                        schema_content_str = json.dumps(schema_content_raw)
+                    else:
+                        schema_content_str = str(schema_content_raw)
+                    
+                    # Update cache with content
+                    cached.version = schema_def.get("version")
+                    cached.description = schema_def.get("description", "") or cached.description
+                    cached.schema_content = schema_content_str
+                    # Prioritize name from IPFS if available
+                    ipfs_name = schema_def.get("name", "")
+                    if ipfs_name:
+                        cached.name = ipfs_name
+                    
+                    return json.dumps({
+                        "schema_id": schema_def["schema_id"],
+                        "name": schema_def.get("name", ""),
+                        "version": schema_def.get("version", "unknown"),
+                        "description": schema_def.get("description", ""),
+                        "ipfs_url": schema_def.get("ipfs_url", ""),  # Keep ipfs_url for API compatibility
+                        "schema": schema_def.get("schema", {})
+                    }, indent=2)
+
+        # Not in cache, fetch metadata from subgraph first (to get dialect and definitionUrl)
+        schema_metadata = await self.schema_cache._get_schema_metadata(schema_id)
+        if not schema_metadata:
+            raise ValueError(
+                f"Schema ID {schema_id} does not exist in the network. "
+                "Call list_schemas() to see available schemas."
+            )
+        
+        dialect = schema_metadata.get("dialect", "json")
+        definition_url = schema_metadata.get("definitionUrl", "")
+        created_at = schema_metadata.get("createdAt", "")
+        subgraph_name = schema_metadata.get("name", "")
+        
+        # Then fetch full schema definition from IPFS (includes description)
         schema = await self.subgraph.get_schema(schema_id)
 
         if not schema:
@@ -348,6 +507,29 @@ class ResourceHandler:
                 f"Schema ID {schema_id} does not exist in the network. "
                 "Call list_schemas() to see available schemas."
             )
+
+        # Store in cache for future use
+        # Prioritize name from IPFS, use subgraph name as fallback
+        ipfs_name = schema.get("name", "")
+        
+        # Convert schema content to string for storage (supports all dialects)
+        schema_content_raw = schema.get("schema", {})
+        if isinstance(schema_content_raw, dict):
+            schema_content_str = json.dumps(schema_content_raw)
+        else:
+            schema_content_str = str(schema_content_raw)
+        
+        cached = CachedSchema(
+            schema_id=schema["schema_id"],
+            name=ipfs_name if ipfs_name else subgraph_name,
+            dialect=dialect,  # From subgraph
+            definition_url=definition_url,  # From subgraph (definitionUrl)
+            created_at=created_at,  # From subgraph
+            version=schema.get("version"),
+            description=schema.get("description", ""),  # Only from IPFS
+            schema_content=schema_content_str  # Store as string
+        )
+        self.schema_cache[schema_id] = cached
 
         return json.dumps(schema, indent=2)
 
@@ -373,7 +555,7 @@ def get_resource_handler() -> ResourceHandler:
 FILES_RESOURCE = Resource(
     uri="vana://files",
     name="User Files",
-    description="List all accessible files for the authenticated user. Supports filtering by schema_ids, pagination with limit/offset.",
+    description="List all accessible files for the authenticated user. Supports filtering by schema_ids. Automatically paginates through all files.",
     mime_type="application/json"
 )
 

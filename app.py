@@ -1,6 +1,7 @@
 import sys
 import traceback
 import logging
+from contextlib import asynccontextmanager
 
 def handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
@@ -17,6 +18,7 @@ from api.operations import router as operations_router
 from api.identity import router as identity_router
 from api.artifacts import router as artifacts_router
 from mcp_server.server import mcp
+from mcp_server.resources import get_resource_handler
 
 # Configure logging
 logging.basicConfig(
@@ -24,13 +26,31 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+logger = logging.getLogger(__name__)
+
 mcp_app = mcp.http_app(path='/')
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Custom lifespan that wraps MCP lifespan and starts schema cache prepopulation.
+    """
+    # Startup: Start schema cache prepopulation
+    logger.info("Starting schema cache prepopulation...")
+    resource_handler = get_resource_handler()
+    await resource_handler.schema_cache.ensure_prepopulate_started()
+    
+    # Use MCP lifespan for the rest
+    async with mcp_app.lifespan(app):
+        yield
+
 
 app = FastAPI(
     title="Vana Personal-Server API",
     version="0.1.0",
     description="A user-scoped compute service that executes permissioned operations on private data.",
-    lifespan=mcp_app.lifespan
+    lifespan=lifespan
 )
 
 app.add_middleware(
